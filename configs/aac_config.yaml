@@ -1,0 +1,51 @@
+algorithm: vanilla_aac
+
+env:
+  domain_name: finger
+  task_name: spin
+  frame_stack: 3
+  action_repeat: 4
+  image_size: 100
+  episode_length: 1000
+  eval_mode: null
+  distracting_cs_intensity: 0.1
+
+agent:
+  name: aac_sac # not used
+  actor_weights: null # or a string "./path/to/model.pt"
+  critic_weights: null
+  actor_hidden_dim: 1024 
+  critic_hidden_dim: 256
+  use_aug: ${algo.crop}
+  discount: 0.99
+  init_temperature: 0.1 # same with visual sac, since it is updated together with actor
+  num_shared_layers: 11 # --- for actor that not loaded from weights
+  num_head_layers: 0 
+  num_filters: 32 
+  projection_dim: 100 # ---
+  actor_lr: 0.001
+  actor_beta: 0.9
+  actor_update_freq: 2 # like the t=0 -> T-1 loop in paper
+  critic_lr: 0.001
+  critic_beta: 0.9
+  critic_tau: 0.03
+  critic_target_update_freq: 2 # like the t=0 -> T-1 loop in paper
+  alpha_lr: 0.0001
+  alpha_beta: 0.5
+
+algo:
+  seed: 42
+  train_steps: 500000 # 500000
+  init_steps: 0 # 1000
+  batch_size: 128
+  save_freq: 50000 # 100000
+  eval_freq: 10000
+  eval_episodes: 30
+  crop: true
+  image_crop_size: 84
+  log_dir: logs
+  save_video: true #
+  use_wandb: true #
+  save_buffer: false
+  actor_buffer: null # for AAC, null or a string to replay buffer
+  critic_buffer: null

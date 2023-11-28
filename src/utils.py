@@ -6,6 +6,7 @@ import os
 import glob
 import json
 import random
+import pickle
 from omegaconf import OmegaConf
 from datetime import datetime
 
@@ -188,6 +189,20 @@ class ReplayBuffer(object):
         self.idx = 0
         self.full = False
 
+    def save(self, file_path):
+        print(f"Saving replay buffer to {file_path} ...")
+        with open(file_path, 'wb') as fi:
+            pickle.dump(self, fi)
+        print("Replay buffer saved!")
+
+    @staticmethod
+    def load(file_path):
+        print(f"Loading replay buffer from {file_path} ...")
+        with open(file_path, 'rb') as fi:
+            obj=pickle.load(fi)
+        print("Replay buffer loaded!")
+        return obj
+    
     def add(self, obs, action, reward, next_obs, done):
         obses = (obs.copy(), next_obs.copy())
         if self.idx >= len(self._obses):
@@ -329,6 +344,8 @@ class CRDLoss(nn.Module):
 
 class ContrastBuffer(ReplayBuffer):
     """Buffer for normal transitions and corresponding features"""
+    # TODO:
+    # 这里后期可以考虑加上TACO第二版的对比学习数据 (maybe)
     def __init__(self, action_shape, capacity, batch_size, feature_dim, K, T=0.07):
         super().__init__(action_shape, capacity, batch_size)
         self.K = K
