@@ -23,7 +23,7 @@ creature. Parts of the agents (like organ) please put in `module.py`. Now have s
 
 **Algorithm**:
 1. Vanilla bc. Done check bc_agent
-2. https://proceedings.mlr.press/v164/liu22b.html. First get a state-based sac, then run bc to get a visual-based actor, then run aac (asymmetrical actor-critic) to make the actor on-policy. I think it should be a strong baseline. -- Done, the aac and bc can use pretrained model and self defined buffer to train
+2. https://proceedings.mlr.press/v164/liu22b.html. First get a state-based sac, then run bc to get a visual-based actor, then run aac (asymmetrical actor-critic) to make the actor on-policy. I think it should be a strong baseline. -- Done, the aac and bc can use pretrained model and self defined buffer to train, the config is in auged_aac_config.yaml
 3. (Ours) First get a state-based sac, then use DAgger (http://arxiv.org/abs/1011.0686) and contrastive representation distillation (crd) to train a visual-based actor. You can treat it as to use crd_loss + bc_loss in the update step of DAgger. -- wait for debugging in BC ...
 
 **Others**:
