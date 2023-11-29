@@ -47,6 +47,7 @@ class SAC(object):
         return self.log_alpha.exp()
 
     def _obs_to_input(self, obs):
+        # must rewrite the function in new agent to get obs["state"] or obs["visual"]
         _obs = torch.FloatTensor(obs).cuda()
         _obs = _obs.unsqueeze(0)
         return _obs

@@ -5,13 +5,21 @@ import gym
 import utils
 import time
 from env.wrappers import make_env
-from agents.sac_agent import StateSAC, VisualSAC
+from agents.aac_agent import AACAgent
 from logger import Logger
 from datetime import datetime
 from video import VideoRecorder
 
 
 def evaluate(env, agent, video, num_episodes, L, step, test_env=False):
+    """
+    Args:
+        num_episodes: how many episodes for eval
+        L: logger
+        step: which step in the whole training process
+    return:
+        mean reward of episodes
+    """
     episode_rewards = []
     _test_env = "_test_env" if test_env else ""
     for i in range(num_episodes):
@@ -32,7 +40,6 @@ def evaluate(env, agent, video, num_episodes, L, step, test_env=False):
         episode_rewards.append(episode_reward)
 
     return np.mean(episode_rewards)
-
 
 def train(args):
     # parse config
@@ -96,6 +103,7 @@ def train(args):
 
     # Prepare agent
     assert torch.cuda.is_available(), "must have cuda enabled"
+    # TODO: add actor_buffer, critic_buffer that from other sampler
     replay_buffer = utils.ReplayBuffer(
         action_shape=env.action_space.shape,
         capacity=algo_config.train_steps,
@@ -106,20 +114,12 @@ def train(args):
         algo_config.image_crop_size,
         algo_config.image_crop_size,
     )
-    # print("Observations:", env.observation_space.shape)
-    # print("Cropped observations:", cropped_obs_shape)
-    if algo_config.mode == "state":
-        agent = StateSAC(
-            obs_shape=env.observation_space["state"].shape,
-            action_shape=env.action_space.shape,
-            args=agent_config,
-        )
-    else:
-        agent = VisualSAC(
-            obs_shape=cropped_visual_obs_shape,
-            action_shape=env.action_space.shape,
-            args=agent_config,
-        )
+    agent = AACAgent(
+        obs_shape=cropped_visual_obs_shape,
+        state_shape=env.observation_space["state"].shape,
+        action_shape=env.action_space.shape,
+        args=agent_config,
+    )
 
     start_step, episode, episode_reward, done = 0, 0, 0, True
     L = Logger(work_dir, use_wandb=algo_config.use_wandb)
@@ -182,7 +182,7 @@ def train(args):
                 algo_config.init_steps if step == algo_config.init_steps else 1
             )
             for _ in range(num_updates):
-                agent.update(replay_buffer, L, step)
+                agent.default_update(replay_buffer, L, step)
 
         # Take step
         next_obs, reward, done, _ = env.step(action)
@@ -191,24 +191,6 @@ def train(args):
         episode_reward += reward
         obs = next_obs
 
-        # if step == start_step:
-        # debug for augmentation
-        # print('obs: ', obs.frame(0))
-        # save first obs
-        # os.makedirs(os.path.join(work_dir, 'debug'), exist_ok=True)
-        # utils.save_image(obs.frame(0),
-        #                  os.path.join(work_dir, 'debug', 'obs.png'))
-        # tensor = torch.tensor(obs.frame(0)).clone().cuda().unsqueeze(0)
-        # start_time = time.time()
-        # aug_tensor = augmentations.random_overlay(
-        #     augmentations.random_crop(tensor))
-        # print('aug time: ', time.time() - start_time)
-        # np_array = aug_tensor.squeeze(0).cpu().numpy()
-        # utils.save_image(
-        #     np_array, os.path.join(work_dir, 'debug', 'obs_aug.png'))
-
         episode_step += 1
-    if algo_config.save_buffer:
-        buffer_dir = utils.make_dir(os.path.join(work_dir, "replay_buffer"))
-        replay_buffer.save(os.path.join(buffer_dir, "replay_buffer.pkl"))
+
     print("Completed training for", work_dir)
