@@ -2,7 +2,7 @@ from gym import core, spaces
 from dm_control import suite
 from dm_env import specs
 import numpy as np
-import ipdb
+from ipdb import set_trace
 
 
 def _spec_to_box(spec, dtype):

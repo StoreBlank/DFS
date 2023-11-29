@@ -1,12 +1,12 @@
 algos: {
-  "vanilla_visual_sac": "./logs/finger_spin/vanilla_visual_sac/42/2023-11-21 08:56:09.837212/model/200000.pt",
-  "vanilla_state_sac": "./logs/finger_spin/vanilla_state_sac/42/2023-11-22 17:17:19.662577/model/200000.pt",
-  "vanilla_aac": "./logs/finger_spin/vanilla_aac/42/2023-11-22 22:39:22.751148/model/200000.pt",
-  "vanilla_bc": "./logs/finger_spin/vanilla_bc/42/2023-11-23 18:00:40.226212/model/50000.pt"
+  "vanilla_visual_sac": "ckpts/visual.pt",
+  "vanilla_state_sac": "ckpts/state.pt",
+  "vanilla_aac": "ckpts/aac.pt",
+  "vanilla_bc": "ckpts/bc.pt",
 }
 intensities: [0.1, 0.2, 0.3, 0.4, 0.5]
 save_video: true
-eval_episodes: 3
+eval_episodes: 10
 
 env:
   domain_name: finger

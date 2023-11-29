@@ -124,3 +124,6 @@ dmypy.json
 
 wandb/
 outputs/
+*.pt
+*.pth
+configs/config.cfg

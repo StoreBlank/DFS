@@ -21,6 +21,8 @@ def make(
         channels_first=True
 ):
     env_id = 'dmc_%s_%s_%s-v1' % (domain_name, task_name, seed)
+    if is_distracting_cs:
+        env_id += f'_distracting_cs_{distracting_cs_intensity}'
 
     if from_pixels:
         assert not visualize_reward, 'cannot use visualize reward when learning from pixels'

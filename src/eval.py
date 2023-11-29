@@ -8,12 +8,10 @@ import pandas as pd
 import utils
 from env.wrappers import make_env
 from video import VideoRecorder
+from ipdb import set_trace
 
 os.environ["MUJOCO_GL"] = "egl"
 
-class Logger(object):
-    def __init__(self) -> None:
-        self.df=pd.DataFrame
 
 def evaluate(env, agent, video, num_episodes, video_name):
     episode_rewards = []
@@ -34,24 +32,23 @@ def evaluate(env, agent, video, num_episodes, video_name):
         print("saved!")
     return np.mean(episode_rewards)
 
-@hydra.main(
-    version_base=None, config_path="../configs", config_name="eval_config"
-)
-def main(cfg):
-    algos=cfg.algos
-    intensities=cfg.intensities
-    save_video=cfg.save_video
-    eval_episodes=cfg.eval_episodes
-    env_config=cfg.env
 
-    work_dir=f"./logs/{env_config.domain_name}_{env_config.task_name}/eval/{str(datetime.now())}/"
+@hydra.main(version_base=None, config_path="../configs", config_name="eval_config")
+def main(cfg):
+    algos = cfg.algos
+    intensities = cfg.intensities
+    save_video = cfg.save_video
+    eval_episodes = cfg.eval_episodes
+    env_config = cfg.env
+
+    work_dir = f"./logs/{env_config.domain_name}_{env_config.task_name}/eval/{str(datetime.now())}/"
     video_dir = utils.make_dir(os.path.join(work_dir, "video"))
     video = VideoRecorder(video_dir if save_video else None, height=448, width=448)
     df = pd.DataFrame(columns=intensities, index=list(algos.keys()))
 
     for intensity in intensities:
         print(f"Init env with intensity {intensity}")
-        env= make_env(
+        env = make_env(
             domain_name=env_config.domain_name,
             task_name=env_config.task_name,
             seed=42,
@@ -65,12 +62,13 @@ def main(cfg):
         for algo, path in algos.items():
             print(f"--- Loading {algo} weights from {path} ---")
             agent = torch.load(path)
-            video_name=f"{algo}_{intensity}"
-            reward=evaluate(env, agent, video, eval_episodes, video_name)
+            video_name = f"{algo}_{intensity}"
+            reward = evaluate(env, agent, video, eval_episodes, video_name)
             print(f"Got reward {reward}")
             df[algo, intensity] = reward
-    
+
     df.to_csv(os.path.join(work_dir, "result.csv"))
+
 
 if __name__ == "__main__":
     main()
