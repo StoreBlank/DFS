@@ -127,3 +127,4 @@ outputs/
 *.pt
 *.pth
 configs/config.cfg
+*.pkl
