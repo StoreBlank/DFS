@@ -335,7 +335,7 @@ class CRDLoss(nn.Module):
         """
         f_s = self.embed_s(f_s)
         f_t = self.embed_t(f_t)
-        out_s, out_t = buffer.contrast(f_s, f_t, idx, contrast_idx)
+        out_s, out_t = buffer.contrast(f_s, f_t, idx, contrast_idx) # take out contrast pair
         s_loss = contrast_loss(out_s, self.residual)
         t_loss = contrast_loss(out_t, self.residual)
         loss = s_loss + t_loss
@@ -344,19 +344,18 @@ class CRDLoss(nn.Module):
 
 class ContrastBuffer(ReplayBuffer):
     """Buffer for normal transitions and corresponding features"""
-    # TODO:
-    # 这里后期可以考虑加上TACO第二版的对比学习数据 (maybe)
-    def __init__(self, action_shape, capacity, batch_size, feature_dim, K, T=0.07):
-        super().__init__(action_shape, capacity, batch_size)
-        self.K = K
-        self.T = T
-        self.Z_v1 = -1
-        self.Z_v2 = -1
+    # FIXME: in fixing... please do not use this from crd
 
-        stdv = 1. / np.sqrt(feature_dim / 3)
-        self.memory_v1 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv)
-        self.memory_v2 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv)
+    # def __init__(self, action_shape, capacity, batch_size, feature_dim, K, T=0.07):
+    #     super().__init__(action_shape, capacity, batch_size)
+    #     self.K = K
+    #     self.T = T
+    #     self.Z_v1 = -1
+    #     self.Z_v2 = -1
 
-    def contrast(self, f_s, f_t, idx, contrast_idx=None):
-        # TODO
-        raise NotImplementedError
+    #     stdv = 1. / np.sqrt(feature_dim / 3)
+    #     self.memory_v1 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv)
+    #     self.memory_v2 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv)
+
+    # def contrast(self, f_s, f_t, idx, contrast_idx=None):
+    #     raise NotImplementedError

@@ -4,6 +4,7 @@ import wandb
 from algorithms.train_vanilla_sac import train as train_sac
 from algorithms.train_vanilla_bc import train as train_bc
 from algorithms.train_aac import train as train_aac
+from algorithms.train_mopa import train as train_mopa
 from omegaconf import OmegaConf
 
 os.environ["MUJOCO_GL"] = "egl"
@@ -26,6 +27,8 @@ def main(cfg):
         train_bc(cfg)
     if cfg.algorithm == "vanilla_aac":
         train_aac(cfg)
+    if cfg.algorithm == "mopa":
+        train_mopa(cfg)
     if cfg.algo.use_wandb:
         wandb.finish()
 

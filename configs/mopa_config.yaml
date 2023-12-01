@@ -1,4 +1,4 @@
-algorithm: auged_aac
+algorithm: mopa
 
 env:
   domain_name: finger
@@ -11,9 +11,9 @@ env:
   distracting_cs_intensity: 0.1
 
 agent:
-  name: auged_aac_sac # not used
-  actor_weights: "./logs/finger_spin/vanilla_bc/42/2023-11-23 18:00:40.226212/model/50000.pt" # from visual bc
-  critic_weights: "./logs/finger_spin/vanilla_state_sac/42/2023-11-22 17:17:19.662577/model/50000.pt" # from state sac
+  name: mopa # not used
+  actor_weights: "./ckpts/bc.pt" # from visual bc
+  critic_weights: "./ckpts/state.pt" # from state sac
   actor_hidden_dim: 1024 
   critic_hidden_dim: 256
   use_aug: ${algo.crop}
@@ -35,9 +35,9 @@ agent:
 
 algo:
   seed: 42
-  train_steps: 500000 # 500000
+  train_steps: 200000 # 500000
   init_steps: 0 # 1000
-  batch_size: 128
+  batch_size: 64 #128 -> here we use 64, is 64 + 64*3
   save_freq: 50000 # 100000
   eval_freq: 10000
   eval_episodes: 30
@@ -46,6 +46,4 @@ algo:
   log_dir: logs
   save_video: true #
   use_wandb: true #
-  save_buffer: false
-  actor_buffer: null # for AAC, null or a string to replay buffer
-  critic_buffer: "./logs/finger_spin/vanilla_state_sac/42/2023-11-22 17:17:19.662577/replay_buffer/replay_buffer.pkl" # state replay buffer
+  expert_replay_buffer: "./buffers/finger_spin/visualbc_buffer_collector/replay_buffer.pkl"
