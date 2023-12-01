@@ -1,9 +1,11 @@
 algos: {
   "vanilla_visual_sac": "ckpts/visual.pt",
   "vanilla_state_sac": "ckpts/state.pt",
-  "vanilla_aac": "ckpts/aac.pt",
+  "vanilla_aac": "ckpts/aac_500k.pt",
   "vanilla_bc": "ckpts/bc.pt",
+  "mopa": "ckpts/mopa.pt",
 } # all of the models are 200000 steps training
+
 intensities: [0.1, 0.2, 0.3, 0.4, 0.5]
 save_video: true
 eval_episodes: 10

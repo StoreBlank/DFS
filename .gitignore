@@ -128,3 +128,4 @@ outputs/
 *.pth
 configs/config.cfg
 *.pkl
+crd/
