@@ -5,7 +5,7 @@ import gym
 from env.wrappers import make_env
 import utils
 from utils import collect_buffer
-import datetime
+from datetime import datetime
 
 os.environ["MUJOCO_GL"] = "egl"
 
@@ -50,7 +50,8 @@ def main(args):
 
     # Prepare agent
     print(f"Loading expert weights from {agent_config.model_path} ...")
-    agent = torch.load(agent_config.model_path).eval()
+    agent = torch.load(agent_config.model_path)
+    agent.eval()
     for param in agent.actor.parameters():
         param.requires_grad = False
     print("Expert loaded!")

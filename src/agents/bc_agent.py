@@ -16,7 +16,6 @@ def kl_divergence(mu1, log_std1, mu2, log_std2):
 
 class BC(SAC):
     def __init__(self, agent_obs_shape, action_shape, agent_config):
-        # super(BC, self).__init__(agent_obs_shape, action_shape, agent_config)
         shared_cnn = m.SharedCNN(
             agent_obs_shape, agent_config.num_shared_layers, agent_config.num_filters
         ).cuda()
@@ -28,6 +27,7 @@ class BC(SAC):
             head_cnn,
             m.RLProjection(head_cnn.out_shape, agent_config.projection_dim),
         )
+        self.use_aug = agent_config.use_aug
 
         self.actor = m.VisualActor(actor_encoder, action_shape, agent_config.hidden_dim).cuda()
 
@@ -70,6 +70,9 @@ class BC(SAC):
         self.actor_optimizer.step()
 
     def update(self, replay_buffer, L, step):
-        obs, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_sample() # sample from a fixed buffer to clone!
+        if self.use_aug:
+            obs, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_aug_sample()
+        else:
+            obs, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_sample()
 
         self.update_actor(obs, mu_target, log_std_target, L, step)

@@ -18,10 +18,6 @@ agent:
 
 algo:
   seed: 42
-  rollout_steps: 200000 # 500000
+  rollout_steps: 50000 # 500000
   batch_size: 128
-  crop: true
-  image_crop_size: 84
   log_dir: logs
-  save_video: true #
-  use_wandb: true #

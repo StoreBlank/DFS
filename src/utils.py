@@ -294,8 +294,29 @@ class ReplayBuffer(object):
 
         return obs, actions, rewards, next_obs, not_dones
     
+    def costom_aug_sample(self, func, n=None):
+        obs, actions, _, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
+        obs["visual"] = func(obs["visual"])
+        next_obs["visual"] = func(next_obs["visual"])
+
+        return obs, actions, rewards, next_obs, not_dones
+    
     def behavior_sample(self, n=None):
         obs, actions, log_stds, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
+
+        return obs, actions, log_stds, rewards, next_obs, not_dones
+    
+    def behavior_aug_sample(self, n=None):
+        obs, actions, log_stds, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
+        obs["visual"] = random_crop(obs["visual"])
+        next_obs["visual"] = random_crop(next_obs["visual"])
+
+        return obs, actions, log_stds, rewards, next_obs, not_dones
+    
+    def behavior_costom_aug_sample(self, func, n=None):
+        obs, actions, log_stds, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
+        obs["visual"] = func(obs["visual"])
+        next_obs["visual"] = func(next_obs["visual"])
 
         return obs, actions, log_stds, rewards, next_obs, not_dones
 
@@ -328,7 +349,7 @@ def collect_buffer(agent, env, rollout_steps, batch_size, work_dir):
 
     if work_dir is not None:
         buffer_dir = make_dir(work_dir)
-        replay_buffer.save(os.path.join(buffer_dir, "replay_buffer.pkl"))
+        replay_buffer.save(os.path.join(buffer_dir, f"{rollout_steps}.pkl"))
 
     print("Completed rollout")
     return replay_buffer

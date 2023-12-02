@@ -105,9 +105,7 @@ def train(args):
 
     # Prepare agent
     assert torch.cuda.is_available(), "must have cuda enabled"
-    print(f"Loading replay buffer from {expert_config.buffer_path} ...")
     replay_buffer = utils.ReplayBuffer.load(expert_config.buffer_path)
-    print(f"Buffer loaded!")
     # student
     cropped_visual_obs_shape = (
         3 * env_config.frame_stack,
