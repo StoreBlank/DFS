@@ -15,7 +15,7 @@ def kl_divergence(mu1, log_std1, mu2, log_std2):
 
 
 class BC(SAC):
-    def __init__(self, agent_obs_shape, action_shape, agent_config, expert_config):
+    def __init__(self, agent_obs_shape, action_shape, agent_config):
         # super(BC, self).__init__(agent_obs_shape, action_shape, agent_config)
         shared_cnn = m.SharedCNN(
             agent_obs_shape, agent_config.num_shared_layers, agent_config.num_filters
@@ -35,14 +35,6 @@ class BC(SAC):
             self.actor.parameters(), lr=agent_config.bc_lr, betas=(agent_config.actor_beta, 0.999)
         )
 
-        if expert_config.name=="state_sac": 
-            print(f"Loading expert weights from {expert_config.model_path} ...")
-            self.expert=torch.load(expert_config.model_path)
-            self.expert.freeze()
-            print("Expert loaded!")
-        else:
-            raise Exception("You can only use state_sac as expert now!")
-
         self.train()
 
     # rewrite obs
@@ -60,14 +52,9 @@ class BC(SAC):
         self.training = training
         self.actor.train(training)
 
-    def update_actor(self, obs, L=None, step=None):
-        if self.expert is None:
-            raise Exception("Expert not set")
-        obs_state = obs["state"]
+    def update_actor(self, obs, mu_target, log_std_target, L=None, step=None):
         obs_visual = obs["visual"]
 
-        with torch.no_grad():
-            mu_target, _, _, log_std_target = self.expert.actor(obs_state, False, False)
         mu_pred, _, _, log_std_pred = self.actor(obs_visual, False, False)
 
         # Mention the squashing
@@ -83,6 +70,6 @@ class BC(SAC):
         self.actor_optimizer.step()
 
     def update(self, replay_buffer, L, step):
-        obs, _, _, _, _ = replay_buffer.sample() # sample from a fixed buffer to clone!
+        obs, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_sample() # sample from a fixed buffer to clone!
 
-        self.update_actor(obs, L, step)
+        self.update_actor(obs, mu_target, log_std_target, L, step)

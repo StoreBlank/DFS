@@ -183,6 +183,7 @@ class ReplayBuffer(object):
 
         self._obses = []
         self.actions = np.empty((capacity, *action_shape), dtype=np.float32)
+        self.log_std = np.empty((capacity, *action_shape), dtype=np.float32)
         self.rewards = np.empty((capacity,), dtype=np.float32)
         self.not_dones = np.empty((capacity,), dtype=np.float32)
 
@@ -210,6 +211,20 @@ class ReplayBuffer(object):
         else:
             self._obses[self.idx] = obses
         np.copyto(self.actions[self.idx], action)
+        self.rewards[self.idx] = reward
+        self.not_dones[self.idx] = not done
+
+        self.idx = (self.idx + 1) % self.capacity
+        self.full = self.full or self.idx == 0
+
+    def add_behavior(self, obs, action, log_std, reward, next_obs, done):
+        obses = (obs.copy(), next_obs.copy())
+        if self.idx >= len(self._obses):
+            self._obses.append(obses)
+        else:
+            self._obses[self.idx] = obses
+        np.copyto(self.actions[self.idx], action)
+        np.copyto(self.log_std[self.idx], log_std)
         self.rewards[self.idx] = reward
         self.not_dones[self.idx] = not done
 
@@ -249,10 +264,11 @@ class ReplayBuffer(object):
             "visual": torch.as_tensor(next_obs["visual"]).cuda().float(),
         }
         actions = torch.as_tensor(self.actions[idxs]).cuda()
+        log_stds = torch.as_tensor(self.log_std[idxs]).cuda()
         rewards = torch.as_tensor(self.rewards[idxs]).cuda()
         not_dones = torch.as_tensor(self.not_dones[idxs]).cuda()
 
-        return obs, actions, rewards, next_obs, not_dones, idxs
+        return obs, actions, log_stds, rewards, next_obs, not_dones, idxs
 
     # def sample_svea(self, n=None, pad=4):
     #     obs, actions, rewards, next_obs, not_dones = self.__sample__(n=n)
@@ -266,16 +282,21 @@ class ReplayBuffer(object):
     #     return obs, actions, rewards, next_obs, not_dones
 
     def sample(self, n=None):
-        obs, actions, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
+        obs, actions, _, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
 
         return obs, actions, rewards, next_obs, not_dones
 
     def aug_sample(self, n=None):
-        obs, actions, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
+        obs, actions, _, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
         obs["visual"] = random_crop(obs["visual"])
         next_obs["visual"] = random_crop(next_obs["visual"])
 
         return obs, actions, rewards, next_obs, not_dones
+    
+    def behavior_sample(self, n=None):
+        obs, actions, log_stds, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
+
+        return obs, actions, log_stds, rewards, next_obs, not_dones
 
 
 def contrast_loss(x, residual):

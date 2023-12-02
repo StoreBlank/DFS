@@ -64,6 +64,12 @@ class SAC(object):
             mu, pi, _, _ = self.actor(_obs, compute_log_pi=False)
         return pi.cpu().data.numpy().flatten()
 
+    def exhibit_behavior(self, obs):
+        _obs = self._obs_to_input(obs)
+        with torch.no_grad():
+            mu, _, _, log_std = self.actor(_obs, compute_pi=False, compute_log_pi=False)
+        return mu.cpu().data.numpy().flatten(), log_std.cpu().data.numpy().flatten()
+
     def update_critic(self, obs, action, reward, next_obs, not_done, L=None, step=None):
         with torch.no_grad():
             _, policy_action, log_pi, _ = self.actor(next_obs)

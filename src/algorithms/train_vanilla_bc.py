@@ -9,6 +9,7 @@ from agents.bc_agent import BC
 from logger import Logger
 from datetime import datetime
 from video import VideoRecorder
+from ipdb import set_trace
 
 
 def evaluate(env, agent, video, num_episodes, L, step, test_env=False):
@@ -104,26 +105,42 @@ def train(args):
 
     # Prepare agent
     assert torch.cuda.is_available(), "must have cuda enabled"
-
-    print(f"Loading replay buffer from {expert_config.buffer_path} ...")
-    replay_buffer = utils.ReplayBuffer.load(expert_config.buffer_path)
-    print(f"Buffer loaded!")
+    # teacher
+    teacher = torch.load(expert_config.model_path)
+    teacher.eval()
+    score = evaluate(env, teacher, VideoRecorder(None), 3, None, "teacher")
+    print(f"Teacher reward: {score}")
+    # student
     cropped_visual_obs_shape = (
         3 * env_config.frame_stack,
         algo_config.image_crop_size,
         algo_config.image_crop_size,
     )
-
     agent = BC(
         agent_obs_shape=cropped_visual_obs_shape,
         action_shape=env.action_space.shape,
         agent_config=agent_config,
-        expert_config=expert_config,
     )
-    # TODO: 
-    # 1. aac on-policy bc
-    # 2. DAgger + crd bc
+    
+    # rollout
+    print("Rolling out teacher")
+    replay_buffer = utils.ReplayBuffer(
+        action_shape=env.action_space.shape,
+        capacity=algo_config.buffer_size,
+        batch_size=algo_config.batch_size,
+    )
+    obs = env.reset()
+    for step in range(algo_config.buffer_size):
+        mu, log_std = teacher.exhibit_behavior(obs)
+        next_obs, reward, done, _ = env.step(mu)
+        replay_buffer.add_behavior(obs, mu, log_std, reward, next_obs, done)
+        obs = next_obs
+        if done:
+            obs = env.reset()
+            print(f"Rollout step {step} done")
 
+    # train
+    print("Training student")
     start_step = 0
     L = Logger(work_dir, use_wandb=algo_config.use_wandb)
     start_time = time.time()
