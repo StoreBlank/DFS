@@ -105,11 +105,9 @@ def train(args):
 
     # Prepare agent
     assert torch.cuda.is_available(), "must have cuda enabled"
-    # teacher
-    teacher = torch.load(expert_config.model_path)
-    teacher.eval()
-    score = evaluate(env, teacher, VideoRecorder(None), 3, None, "teacher")
-    print(f"Teacher reward: {score}")
+    print(f"Loading replay buffer from {expert_config.buffer_path} ...")
+    replay_buffer = utils.ReplayBuffer.load(expert_config.buffer_path)
+    print(f"Buffer loaded!")
     # student
     cropped_visual_obs_shape = (
         3 * env_config.frame_stack,
@@ -122,23 +120,6 @@ def train(args):
         agent_config=agent_config,
     )
     
-    # rollout
-    print("Rolling out teacher")
-    replay_buffer = utils.ReplayBuffer(
-        action_shape=env.action_space.shape,
-        capacity=algo_config.buffer_size,
-        batch_size=algo_config.batch_size,
-    )
-    obs = env.reset()
-    for step in range(algo_config.buffer_size):
-        mu, log_std = teacher.exhibit_behavior(obs)
-        next_obs, reward, done, _ = env.step(mu)
-        replay_buffer.add_behavior(obs, mu, log_std, reward, next_obs, done)
-        obs = next_obs
-        if done:
-            obs = env.reset()
-            print(f"Rollout step {step} done")
-
     # train
     print("Training student")
     start_step = 0

@@ -186,8 +186,7 @@ def train(args):
 
         # Take step
         next_obs, reward, done, _ = env.step(action)
-        done_bool = 0 if episode_step + 1 == env._max_episode_steps else float(done)
-        replay_buffer.add(obs, action, reward, next_obs, done_bool)
+        replay_buffer.add(obs, action, reward, next_obs, done)
         episode_reward += reward
         obs = next_obs
 

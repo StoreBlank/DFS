@@ -23,7 +23,7 @@ agent:
   mode: "visual" # not used
 
 expert:
-  model_path: "./ckpts/state.pt"
+  buffer_path: null
 
 algo:
   seed: 42

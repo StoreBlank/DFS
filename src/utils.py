@@ -9,6 +9,7 @@ import random
 import pickle
 from omegaconf import OmegaConf
 from datetime import datetime
+from tqdm import tqdm
 
 
 eps = 1e-7
@@ -299,6 +300,40 @@ class ReplayBuffer(object):
         return obs, actions, log_stds, rewards, next_obs, not_dones
 
 
+def collect_buffer(agent, env, rollout_steps, batch_size, work_dir):
+    assert torch.cuda.is_available(), "must have cuda enabled"
+    replay_buffer = ReplayBuffer(
+        action_shape=env.action_space.shape,
+        capacity=rollout_steps,
+        batch_size=batch_size,
+    )
+    
+    start_step, episode, episode_reward, done = 0, 0, 0, True
+    for step in tqdm(range(start_step, rollout_steps + 1), desc="Rollout Progress"):
+        if done:
+            obs = env.reset()
+            done = False
+            print(f"Episode {episode} reward: {episode_reward}")
+            episode_reward = 0
+            episode += 1
+
+        with torch.no_grad():
+            mu, pi, log_std = agent.exhibit_behavior(obs)
+
+        # Take step
+        next_obs, reward, done, _ = env.step(pi)
+        replay_buffer.add_behavior(obs, mu, log_std, reward, next_obs, done)
+        episode_reward += reward
+        obs = next_obs
+
+    if work_dir is not None:
+        buffer_dir = make_dir(work_dir)
+        replay_buffer.save(os.path.join(buffer_dir, "replay_buffer.pkl"))
+
+    print("Completed rollout")
+    return replay_buffer
+
+
 def contrast_loss(x, residual):
     # loss for positive pair
     P_pos = x[:, 0]
@@ -356,7 +391,7 @@ class CRDLoss(nn.Module):
         """
         f_s = self.embed_s(f_s)
         f_t = self.embed_t(f_t)
-        out_s, out_t = buffer.contrast(f_s, f_t, idx, contrast_idx)
+        out_s, out_t = buffer.contrast(f_s, f_t, idx, contrast_idx) # take out contrast pair
         s_loss = contrast_loss(out_s, self.residual)
         t_loss = contrast_loss(out_t, self.residual)
         loss = s_loss + t_loss
@@ -365,19 +400,18 @@ class CRDLoss(nn.Module):
 
 class ContrastBuffer(ReplayBuffer):
     """Buffer for normal transitions and corresponding features"""
-    # TODO:
-    # 这里后期可以考虑加上TACO第二版的对比学习数据 (maybe)
-    def __init__(self, action_shape, capacity, batch_size, feature_dim, K, T=0.07):
-        super().__init__(action_shape, capacity, batch_size)
-        self.K = K
-        self.T = T
-        self.Z_v1 = -1
-        self.Z_v2 = -1
+    # FIXME: in fixing... please do not use this from crd
 
-        stdv = 1. / np.sqrt(feature_dim / 3)
-        self.memory_v1 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv)
-        self.memory_v2 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv)
+    # def __init__(self, action_shape, capacity, batch_size, feature_dim, K, T=0.07):
+    #     super().__init__(action_shape, capacity, batch_size)
+    #     self.K = K
+    #     self.T = T
+    #     self.Z_v1 = -1
+    #     self.Z_v2 = -1
 
-    def contrast(self, f_s, f_t, idx, contrast_idx=None):
-        # TODO
-        raise NotImplementedError
+    #     stdv = 1. / np.sqrt(feature_dim / 3)
+    #     self.memory_v1 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv)
+    #     self.memory_v2 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv)
+
+    # def contrast(self, f_s, f_t, idx, contrast_idx=None):
+    #     raise NotImplementedError

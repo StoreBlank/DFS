@@ -1,0 +1,27 @@
+algorithm: visualbc_buffer_collector
+
+env:
+  domain_name: finger
+  task_name: spin
+  frame_stack: 3
+  action_repeat: 4
+  image_size: 100
+  episode_length: 1000
+  eval_mode: null
+  distracting_cs_intensity: 0.1
+
+agent:
+  name: state_sac # ! used in code
+  mode: "state" # not used
+  hidden_dim: 256 # not used
+  model_path: "./ckpts/state.pt"
+
+algo:
+  seed: 42
+  rollout_steps: 200000 # 500000
+  batch_size: 128
+  crop: true
+  image_crop_size: 84
+  log_dir: logs
+  save_video: true #
+  use_wandb: true #

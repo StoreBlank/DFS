@@ -5,13 +5,21 @@ import gym
 import utils
 import time
 from env.wrappers import make_env
-from agents.sac_agent import StateSAC, VisualSAC
+from agents.mopa_agent import MOPAAgent
 from logger import Logger
 from datetime import datetime
 from video import VideoRecorder
 
 
 def evaluate(env, agent, video, num_episodes, L, step, test_env=False):
+    """
+    Args:
+        num_episodes: how many episodes for eval
+        L: logger
+        step: which step in the whole training process
+    return:
+        mean reward of episodes
+    """
     episode_rewards = []
     _test_env = "_test_env" if test_env else ""
     for i in range(num_episodes):
@@ -32,7 +40,6 @@ def evaluate(env, agent, video, num_episodes, L, step, test_env=False):
         episode_rewards.append(episode_reward)
 
     return np.mean(episode_rewards)
-
 
 def train(args):
     # parse config
@@ -96,30 +103,24 @@ def train(args):
 
     # Prepare agent
     assert torch.cuda.is_available(), "must have cuda enabled"
-    replay_buffer = utils.ReplayBuffer(
+    
+    agent_replay_buffer = utils.ReplayBuffer(
         action_shape=env.action_space.shape,
         capacity=algo_config.train_steps,
-        batch_size=algo_config.batch_size,
+        batch_size=3*algo_config.batch_size,
     )
+    expert_replay_buffer = utils.ReplayBuffer.load(algo_config.expert_replay_buffer)
     cropped_visual_obs_shape = (
         3 * env_config.frame_stack,
         algo_config.image_crop_size,
         algo_config.image_crop_size,
     )
-    # print("Observations:", env.observation_space.shape)
-    # print("Cropped observations:", cropped_obs_shape)
-    if algo_config.mode == "state":
-        agent = StateSAC(
-            obs_shape=env.observation_space["state"].shape,
-            action_shape=env.action_space.shape,
-            args=agent_config,
-        )
-    else:
-        agent = VisualSAC(
-            obs_shape=cropped_visual_obs_shape,
-            action_shape=env.action_space.shape,
-            args=agent_config,
-        )
+    agent = MOPAAgent(
+        obs_shape=cropped_visual_obs_shape,
+        state_shape=env.observation_space["state"].shape,
+        action_shape=env.action_space.shape,
+        args=agent_config,
+    )
 
     start_step, episode, episode_reward, done = 0, 0, 0, True
     L = Logger(work_dir, use_wandb=algo_config.use_wandb)
@@ -182,30 +183,15 @@ def train(args):
                 algo_config.init_steps if step == algo_config.init_steps else 1
             )
             for _ in range(num_updates):
-                agent.update(replay_buffer, L, step)
+                agent.mopa_update(expert_replay_buffer, agent_replay_buffer, L, step, n=algo_config.batch_size)
 
         # Take step
         next_obs, reward, done, _ = env.step(action)
-        replay_buffer.add(obs, action, reward, next_obs, done)
+        done_bool = 0 if episode_step + 1 == env._max_episode_steps else float(done)
+        agent_replay_buffer.add(obs, action, reward, next_obs, done_bool)
         episode_reward += reward
         obs = next_obs
 
-        # if step == start_step:
-        # debug for augmentation
-        # print('obs: ', obs.frame(0))
-        # save first obs
-        # os.makedirs(os.path.join(work_dir, 'debug'), exist_ok=True)
-        # utils.save_image(obs.frame(0),
-        #                  os.path.join(work_dir, 'debug', 'obs.png'))
-        # tensor = torch.tensor(obs.frame(0)).clone().cuda().unsqueeze(0)
-        # start_time = time.time()
-        # aug_tensor = augmentations.random_overlay(
-        #     augmentations.random_crop(tensor))
-        # print('aug time: ', time.time() - start_time)
-        # np_array = aug_tensor.squeeze(0).cpu().numpy()
-        # utils.save_image(
-        #     np_array, os.path.join(work_dir, 'debug', 'obs_aug.png'))
-
         episode_step += 1
-    
+
     print("Completed training for", work_dir)
