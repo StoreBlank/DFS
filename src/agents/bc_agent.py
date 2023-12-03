@@ -71,8 +71,8 @@ class BC(SAC):
 
     def update(self, replay_buffer, L, step):
         if self.use_aug:
-            obs, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_aug_sample()
+            obs, _, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_aug_sample()
         else:
-            obs, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_sample()
+            obs, _, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_sample()
 
         self.update_actor(obs, mu_target, log_std_target, L, step)

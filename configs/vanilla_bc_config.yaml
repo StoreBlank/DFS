@@ -23,7 +23,7 @@ agent:
   mode: "visual" # not used
 
 expert:
-  buffer_path: ./buffers/50000.pkl
+  buffer_path: ./buffers/5000.pkl
 
 algo:
   seed: 42
