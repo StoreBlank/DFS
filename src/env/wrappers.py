@@ -22,7 +22,7 @@ def make_env(
 		f'specified mode "{mode}" is not supported'
 
 	paths = []
-	is_distracting_cs = mode == 'distracting_cs'
+	is_distracting_cs = (mode == 'distracting_cs' and intensity > 0.)
 	if is_distracting_cs:
 		import env.distracting_control.suite as dc_suite
 		loaded_paths = [os.path.join(dir_path, 'DAVIS/JPEGImages/480p') for dir_path in utils.load_config('datasets')]

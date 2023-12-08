@@ -13,9 +13,6 @@ from tqdm import tqdm
 from ipdb import set_trace
 
 
-eps = 1e-7
-
-
 class eval_mode(object):
     def __init__(self, *models):
         self.models = models
@@ -203,7 +200,7 @@ class ReplayBuffer(object):
     def load(file_path):
         print(f"Loading replay buffer from {file_path} ...")
         with open(file_path, 'rb') as fi:
-            obj=pickle.load(fi)
+            obj = pickle.load(fi)
         print("Replay buffer loaded!")
         return obj
     
@@ -305,18 +302,22 @@ class ReplayBuffer(object):
 
         return obs, actions, rewards, next_obs, not_dones
     
-    def behavior_sample(self, n=None):
-        obs, actions, mus, log_stds, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
+    def behavior_sample(self, n=None, return_idxs=False):
+        obs, actions, mus, log_stds, rewards, next_obs, not_dones, idxs = self.__sample__(n=n)
 
+        if return_idxs:
+            return obs, actions, mus, log_stds, rewards, next_obs, not_dones, idxs
         return obs, actions, mus, log_stds, rewards, next_obs, not_dones
     
-    def behavior_aug_sample(self, n=None):
-        obs, actions, mus, log_stds, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
+    def behavior_aug_sample(self, n=None, return_idxs=False):
+        obs, actions, mus, log_stds, rewards, next_obs, not_dones, idxs = self.__sample__(n=n)
         obs["visual"] = random_crop(obs["visual"])
         next_obs["visual"] = random_crop(next_obs["visual"])
 
+        if return_idxs:
+            return obs, actions, mus, log_stds, rewards, next_obs, not_dones, idxs
         return obs, actions, mus, log_stds, rewards, next_obs, not_dones
-    
+
     def behavior_costom_aug_sample(self, func, n=None):
         obs, actions, mus, log_stds, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
         obs["visual"] = func(obs["visual"])
@@ -359,84 +360,91 @@ def collect_buffer(agent, env, rollout_steps, batch_size, work_dir):
     return replay_buffer
 
 
-def contrast_loss(x, residual):
-    # loss for positive pair
-    P_pos = x[:, 0]
-    log_D1 = torch.log(P_pos / (P_pos + residual + eps))
-
-    # loss for negative pairs
-    P_neg = x[:, 1:]
-    log_D0 = torch.log(residual / (P_neg + residual + eps)).sum(1)
-
-    assert log_D1.dim() == log_D0.dim() == 1
-    loss = - (log_D1 + log_D0).mean()
-
-    return loss
-
-
-class CRDLoss(nn.Module):
-    """
-    CRD Loss function
-    includes two symmetric parts:
-    (a) using teacher as anchor, choose positive and negatives over the student side
-    (b) using student as anchor, choose positive and negatives over the teacher side
-
-    Args:
-        opt.s_dim: the dimension of student's feature
-        opt.t_dim: the dimension of teacher's feature
-        opt.feat_dim: the dimension of the projection space
-        opt.nce_k: number of negatives paired with each positive
-        opt.n_data: the number of samples in the training set, therefor the memory buffer is: opt.n_data x opt.feat_dim
-    """
-    def __init__(self, opt):
-        super().__init__()
-        self.embed_s = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(opt.s_dim, opt.feat_dim),
-            F.normalize,
-        )
-        self.embed_t = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(opt.t_dim, opt.feat_dim),
-            F.normalize,
-        )
-        self.residual = opt.nce_k / opt.n_data
-
-    def forward(self, f_s, f_t, idx, buffer, contrast_idx=None):
-        """
-        Args:
-            f_s: the feature of student network, size [batch_size, s_dim]
-            f_t: the feature of teacher network, size [batch_size, t_dim]
-            idx: the indices of these positive samples in the dataset, size [batch_size]
-            buffer: contrastive buffer
-            contrast_idx: the indices of negative samples, size [batch_size, nce_k]
-
-        Returns:
-            The contrastive loss
-        """
-        f_s = self.embed_s(f_s)
-        f_t = self.embed_t(f_t)
-        out_s, out_t = buffer.contrast(f_s, f_t, idx, contrast_idx) # take out contrast pair
-        s_loss = contrast_loss(out_s, self.residual)
-        t_loss = contrast_loss(out_t, self.residual)
-        loss = s_loss + t_loss
-        return loss
-
-
 class ContrastBuffer(ReplayBuffer):
     """Buffer for normal transitions and corresponding features"""
-    # FIXME: in fixing... please do not use this from crd
+    def __init__(self, action_shape, capacity, batch_size, feature_dim, K, T=0.07, momentum=0.5):
+        super().__init__(action_shape, capacity, batch_size)
+        self.K = K
+        self.T = T
+        self.Z_v1 = -1
+        self.Z_v2 = -1
+        self.momentum = momentum
 
-    # def __init__(self, action_shape, capacity, batch_size, feature_dim, K, T=0.07):
-    #     super().__init__(action_shape, capacity, batch_size)
-    #     self.K = K
-    #     self.T = T
-    #     self.Z_v1 = -1
-    #     self.Z_v2 = -1
+        stdv = 1. / np.sqrt(feature_dim / 3)
+        self.memory_v1 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv).cuda()
+        self.memory_v2 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv).cuda()
 
-    #     stdv = 1. / np.sqrt(feature_dim / 3)
-    #     self.memory_v1 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv)
-    #     self.memory_v2 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv)
+    # def load_buffer(self, buffer: ReplayBuffer):
+    #     self._obses = buffer._obses
+    #     self.actions = buffer.actions
+    #     self.mus = buffer.mus
+    #     self.log_stds = buffer.log_stds
+    #     self.rewards = buffer.rewards
+    #     self.not_dones = buffer.not_dones
+    #     self.idx = buffer.idx
+    #     self.full = buffer.full
 
-    # def contrast(self, f_s, f_t, idx, contrast_idx=None):
-    #     raise NotImplementedError
+    @staticmethod
+    def load(file_path, opt):
+        print(f"Loading replay buffer from {file_path} ...")
+        with open(file_path, 'rb') as fi:
+            obj = pickle.load(fi)
+        print("Replay buffer loaded!")
+        contrastive_buffer = ContrastBuffer(
+            action_shape=obj.actions.shape[1:],
+            capacity=obj.capacity,
+            batch_size=obj.batch_size,
+            feature_dim=opt.feature_dim,
+            K=opt.K,
+            T=opt.T,
+            momentum=opt.momentum,
+        )
+        contrastive_buffer._obses = obj._obses
+        contrastive_buffer.actions = obj.actions
+        contrastive_buffer.mus = obj.mus
+        contrastive_buffer.log_stds = obj.log_stds
+        contrastive_buffer.rewards = obj.rewards
+        contrastive_buffer.not_dones = obj.not_dones
+        contrastive_buffer.idx = obj.idx
+        contrastive_buffer.full = obj.full
+
+        print("Contrastive wrapped!")
+        return contrastive_buffer
+
+    def contrast(self, f_s, f_t, idx, contrast_idx=None):
+        if contrast_idx is None:
+            contrast_idx = self._get_idxs((len(idx), self.K))
+        idx = np.concatenate([idx[:, None], contrast_idx], 1)
+        
+        # teacher side
+        weight_s = self.memory_v1[idx]
+        out_t = torch.bmm(weight_s, f_t.unsqueeze(2)).squeeze(2)
+        out_t = torch.exp(out_t / self.T)
+        # student side
+        weight_t = self.memory_v2[idx]
+        out_s = torch.bmm(weight_t, f_s.unsqueeze(2)).squeeze(2)
+        out_s = torch.exp(out_s / self.T)
+
+        # set Z if haven't been set yet
+        if self.Z_v1 < 0:
+            self.Z_v1 = out_s.mean().detach().cpu().numpy() * self.capacity
+        if self.Z_v2 < 0:
+            self.Z_v2 = out_t.mean().detach().cpu().numpy() * self.capacity
+
+        out_s = (out_s / self.Z_v1).contiguous()
+        out_t = (out_t / self.Z_v2).contiguous()
+
+        # update memory
+        with torch.no_grad():
+            for i, ind in enumerate(idx[:, 0]):
+                s_pos = self.memory_v1[ind] * self.momentum + f_s[i] * (1. - self.momentum)
+                s_norm = torch.linalg.norm(s_pos)
+                updated_s = s_pos / s_norm
+                self.memory_v1[ind] = updated_s
+
+                t_pos = self.memory_v2[ind] * self.momentum + f_t[i] * (1. - self.momentum)
+                t_norm = torch.linalg.norm(t_pos)
+                updated_t = t_pos / t_norm
+                self.memory_v2[ind] = updated_t
+
+        return out_s, out_t
