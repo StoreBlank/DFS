@@ -23,7 +23,7 @@ agent:
   mode: "visual" # not used
 
 expert:
-  buffer_path: ./buffers/50000.pkl
+  buffer_path: ./buffers/50000_v2.pkl
 
 algo:
   seed: 42
@@ -35,4 +35,4 @@ algo:
   image_crop_size: 84
   log_dir: logs
   save_video: true #
-  use_wandb: true #
+  use_wandb: false #

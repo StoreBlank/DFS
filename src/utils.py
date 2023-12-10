@@ -362,17 +362,17 @@ def collect_buffer(agent, env, rollout_steps, batch_size, work_dir):
 
 class ContrastBuffer(ReplayBuffer):
     """Buffer for normal transitions and corresponding features"""
-    def __init__(self, action_shape, capacity, batch_size, feature_dim, K, T=0.07, momentum=0.5):
+    def __init__(self, action_shape, capacity, batch_size, feature_dim, s_layers, t_layers, K, T=0.07, momentum=0.5):
         super().__init__(action_shape, capacity, batch_size)
         self.K = K
         self.T = T
-        self.Z_v1 = -1
-        self.Z_v2 = -1
+        self.Z_v1 = -np.ones(s_layers)
+        self.Z_v2 = -np.ones(t_layers)
         self.momentum = momentum
 
         stdv = 1. / np.sqrt(feature_dim / 3)
-        self.memory_v1 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv).cuda()
-        self.memory_v2 = torch.rand(capacity, feature_dim).mul_(2 * stdv).add_(-stdv).cuda()
+        self.memory_v1 = torch.rand(s_layers, capacity, feature_dim).mul_(2 * stdv).add_(-stdv).cuda()
+        self.memory_v2 = torch.rand(t_layers, capacity, feature_dim).mul_(2 * stdv).add_(-stdv).cuda()
 
     # def load_buffer(self, buffer: ReplayBuffer):
     #     self._obses = buffer._obses
@@ -395,6 +395,8 @@ class ContrastBuffer(ReplayBuffer):
             capacity=obj.capacity,
             batch_size=obj.batch_size,
             feature_dim=opt.feature_dim,
+            s_layers=opt.s_layers,
+            t_layers=opt.t_layers,
             K=opt.K,
             T=opt.T,
             momentum=opt.momentum,
@@ -411,40 +413,44 @@ class ContrastBuffer(ReplayBuffer):
         print("Contrastive wrapped!")
         return contrastive_buffer
 
-    def contrast(self, f_s, f_t, idx, contrast_idx=None):
+    def contrast(self, f_s, f_t, s_layer, t_layer, idx, contrast_idx=None):
         if contrast_idx is None:
             contrast_idx = self._get_idxs((len(idx), self.K))
         idx = np.concatenate([idx[:, None], contrast_idx], 1)
         
         # teacher side
-        weight_s = self.memory_v1[idx]
+        weight_s = self.memory_v1[s_layer][idx]
         out_t = torch.bmm(weight_s, f_t.unsqueeze(2)).squeeze(2)
         out_t = torch.exp(out_t / self.T)
         # student side
-        weight_t = self.memory_v2[idx]
+        weight_t = self.memory_v2[t_layer][idx]
         out_s = torch.bmm(weight_t, f_s.unsqueeze(2)).squeeze(2)
         out_s = torch.exp(out_s / self.T)
 
         # set Z if haven't been set yet
-        if self.Z_v1 < 0:
-            self.Z_v1 = out_s.mean().detach().cpu().numpy() * self.capacity
-        if self.Z_v2 < 0:
-            self.Z_v2 = out_t.mean().detach().cpu().numpy() * self.capacity
+        # if self.Z_v1 < 0:
+        #     self.Z_v1 = out_s.mean().detach().cpu().numpy() * self.capacity
+        # if self.Z_v2 < 0:
+        #     self.Z_v2 = out_t.mean().detach().cpu().numpy() * self.capacity
+        if self.Z_v1[s_layer] < 0:
+            self.Z_v1[s_layer] = out_s.mean().detach().cpu().numpy() * self.capacity
+        if self.Z_v2[t_layer] < 0:
+            self.Z_v2[t_layer] = out_t.mean().detach().cpu().numpy() * self.capacity
 
-        out_s = (out_s / self.Z_v1).contiguous()
-        out_t = (out_t / self.Z_v2).contiguous()
+        out_s = (out_s / self.Z_v1[s_layer]).contiguous()
+        out_t = (out_t / self.Z_v2[t_layer]).contiguous()
 
         # update memory
         with torch.no_grad():
             for i, ind in enumerate(idx[:, 0]):
-                s_pos = self.memory_v1[ind] * self.momentum + f_s[i] * (1. - self.momentum)
+                s_pos = self.memory_v1[s_layer][ind] * self.momentum + f_s[i] * (1. - self.momentum)
                 s_norm = torch.linalg.norm(s_pos)
                 updated_s = s_pos / s_norm
-                self.memory_v1[ind] = updated_s
+                self.memory_v1[s_layer][ind] = updated_s
 
-                t_pos = self.memory_v2[ind] * self.momentum + f_t[i] * (1. - self.momentum)
+                t_pos = self.memory_v2[t_layer][ind] * self.momentum + f_t[i] * (1. - self.momentum)
                 t_norm = torch.linalg.norm(t_pos)
                 updated_t = t_pos / t_norm
-                self.memory_v2[ind] = updated_t
+                self.memory_v2[t_layer][ind] = updated_t
 
         return out_s, out_t

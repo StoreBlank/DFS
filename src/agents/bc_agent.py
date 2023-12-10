@@ -18,8 +18,6 @@ def kl_divergence(mu1, log_std1, mu2, log_std2):
     std1, std2 = log_std1.exp(), log_std2.exp()
     residual = log_std2 - log_std1 + (mu1 - mu2) ** 2 / (std2 + eps) + std1 / (std2 + eps)
     residual = residual.sum(1)
-    if residual.mean() == torch.inf:
-        set_trace()
     return 0.5 * (residual - k)
 
 
@@ -124,22 +122,25 @@ class FeatBaselineBC(BC):
         obs_state = obs['state']
 
         with torch.no_grad():
-            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, False)
-            feat_t = feats_t[-1]
-            _, _, _, _, feats_s = self.actor(obs_visual, False, False, False, True, False)
-            feat_s = feats_s[-1]
+            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, True)
+            # feat_t = feats_t[-1]
+            _, _, _, _, feats_s = self.actor(obs_visual, False, False, False, True, True)
+            # feat_s = feats_s[-1]
 
         # debug
         # if step == 500:
         #     set_trace()
-        loss_crd = self.criterion(feat_s, feat_t, idxs, replay_buffer)
+        loss_crd, losses_crd = self.criterion(feats_s, feats_t, idxs, replay_buffer)
 
         if L is not None:
             L.log('train_baseline/crd_loss', loss_crd, step)
+            L.log('train_baseline/crd_loss_details', losses_crd, step)
 
         self.crd_optimizer.zero_grad()
         loss_crd.backward()
         self.crd_optimizer.step()
+
+        return loss_crd.item()
 
     def sample_feats(self, replay_buffer, n=1000):
         obs, _, _, _, _ = replay_buffer.sample(n)
@@ -148,20 +149,26 @@ class FeatBaselineBC(BC):
         obs_state = obs['state']
 
         with torch.no_grad():
-            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, False)
-            feat_t = feats_t[-1]
-            feat_t = self.criterion.embed_t(feat_t)
-            feat_t = F.normalize(feat_t, dim=1)
-            _, _, _, _, feats_s = self.actor(obs_visual, False, False, False, True, False)
-            feat_s = feats_s[-1]
-            feat_s = self.criterion.embed_s(feat_s)
-            feat_s = F.normalize(feat_s, dim=1)
+            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, True)
+            # feat_t = self.criterion.embed_t(feat_t)
+            # feat_t = F.normalize(feat_t, dim=1)
+            for i, feat_t in enumerate(feats_t):
+                feats_t[i] = self.criterion.embeds_t[i](feat_t)
+                feats_t[i] = F.normalize(feats_t[i], dim=1)
+                feats_t[i] = feats_t[i].cpu().detach().numpy()
+            _, _, _, _, feats_s = self.actor(obs_visual, False, False, False, True, True)
+            # feat_s = self.criterion.embed_s(feat_s)
+            # feat_s = F.normalize(feat_s, dim=1)
+            for i, feat_s in enumerate(feats_s):
+                feats_s[i] = self.criterion.embeds_s[i](feat_s)
+                feats_s[i] = F.normalize(feats_s[i], dim=1)
+                feats_s[i] = feats_s[i].cpu().detach().numpy()
 
         # into numpy array
-        feat_t = feat_t.cpu().detach().numpy()
-        feat_s = feat_s.cpu().detach().numpy()
+        # feat_t = feat_t.cpu().detach().numpy()
+        # feat_s = feat_s.cpu().detach().numpy()
 
-        return feat_s, feat_t
+        return feats_s, feats_t
 
 
 class CrdBC(BC):
@@ -204,10 +211,10 @@ class CrdBC(BC):
         obs_visual = obs['visual']
         obs_state = obs['state']
 
-        mu_pred, _, _, log_std_pred, feats_s = self.actor(obs_visual, False, False, False, True, False)
+        mu_pred, _, _, log_std_pred, feats_s = self.actor(obs_visual, False, False, False, True, True)
         feat_s = feats_s[-1]
         with torch.no_grad():
-            mu_target, _, _, log_std_target, feats_t = self.expert.actor(obs_state, False, False, True, False)
+            mu_target, _, _, log_std_target, feats_t = self.expert.actor(obs_state, False, False, True, True)
             feat_t = feats_t[-1]
 
         # loss_kl = kl_divergence(
@@ -284,20 +291,23 @@ class PureCrdBC(BC):
         obs_visual = obs['visual']
         obs_state = obs['state']
 
-        _, _, _, _, feats_s = self.actor(obs_visual, False, False, False, True, False)
-        feat_s = feats_s[-1]
+        _, _, _, _, feats_s = self.actor(obs_visual, False, False, False, True, True)
+        # feat_s = feats_s[-1]
         with torch.no_grad():
-            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, False)
-            feat_t = feats_t[-1]
+            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, True)
+            # feat_t = feats_t[-1]
 
-        loss = self.criterion(feat_s, feat_t, idxs, replay_buffer)
+        loss, losses = self.criterion(feats_s, feats_t, idxs, replay_buffer)
 
         if L is not None:
             L.log('train/pure_crd_crd_loss', loss, step)
+            L.log('train/pure_crd_crd_loss_details', losses, step)
 
         self.feature_optimizer.zero_grad()
         loss.backward()
         self.feature_optimizer.step()
+
+        return loss.item()
 
     def sample_feats(self, replay_buffer, n=1000):
         obs, _, _, _, _ = replay_buffer.sample(n)
@@ -306,20 +316,26 @@ class PureCrdBC(BC):
         obs_state = obs['state']
 
         with torch.no_grad():
-            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, False)
-            feat_t = feats_t[-1]
-            feat_t = self.criterion.embed_t(feat_t)
-            feat_t = F.normalize(feat_t, dim=1)
-            _, _, _, _, feats_s = self.actor(obs_visual, False, False, False, True, False)
-            feat_s = feats_s[-1]
-            feat_s = self.criterion.embed_s(feat_s)
-            feat_s = F.normalize(feat_s, dim=1)
+            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, True)
+            # feat_t = self.criterion.embed_t(feat_t)
+            # feat_t = F.normalize(feat_t, dim=1)
+            for i, feat_t in enumerate(feats_t):
+                feats_t[i] = self.criterion.embeds_t[i](feat_t)
+                feats_t[i] = F.normalize(feats_t[i], dim=1)
+                feats_t[i] = feats_t[i].cpu().detach().numpy()
+            _, _, _, _, feats_s = self.actor(obs_visual, False, False, False, True, True)
+            # feat_s = self.criterion.embed_s(feat_s)
+            # feat_s = F.normalize(feat_s, dim=1)
+            for i, feat_s in enumerate(feats_s):
+                feats_s[i] = self.criterion.embeds_s[i](feat_s)
+                feats_s[i] = F.normalize(feats_s[i], dim=1)
+                feats_s[i] = feats_s[i].cpu().detach().numpy()
 
         # into numpy array
-        feat_t = feat_t.cpu().detach().numpy()
-        feat_s = feat_s.cpu().detach().numpy()
+        # feat_t = feat_t.cpu().detach().numpy()
+        # feat_s = feat_s.cpu().detach().numpy()
 
-        return feat_s, feat_t
+        return feats_s, feats_t
 
     def update_last_layer(self, replay_buffer, L, step):
         if self.use_aug:

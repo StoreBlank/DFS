@@ -12,7 +12,7 @@ env:
 
 agent:
   name: pure_crd
-  load_path: ./ckpts/pure_no_last.pt
+  load_path: null
   use_aug: ${algo.crop}
   hidden_dim: 1024
   num_shared_layers: 11
@@ -22,8 +22,14 @@ agent:
   actor_beta: 0.9
   bc_lr: 0.001 # bc for last layer
   crd_lr: 0.001
-  s_dim: ${agent.hidden_dim}
-  t_dim: 256
+  s_dims: [1024, 1024, 1024, 1024]
+  t_dims: [256, 256, 256, 256]
+  crd_weight: [
+    [0.0, 0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 0.0]
+  ]
   feat_dim: ${algo.feature_dim}
   nce_k: ${algo.K}
   n_data: 50000 # depends on the expert buffer size
@@ -33,12 +39,12 @@ expert:
   name: state_sac
   mode: "state" # not used
   hidden_dim: 256 # not used
-  model_path: ./ckpts/state_v1.pt
-  buffer_path: ./buffers/50000_v1.pkl
+  model_path: ./ckpts/state_v2.pt
+  buffer_path: ./buffers/50000_v2.pkl
 
 baseline:
   name: vanilla_bc
-  load_path: ckpts/bc.pt
+  load_path: ckpts/bc_v2.pt
   use_aug: ${algo.crop}
   hidden_dim: 1024
   num_shared_layers: 11
@@ -48,8 +54,9 @@ baseline:
   actor_beta: 0.9
   bc_lr: 0.001
   crd_baseline_lr: 0.001
-  s_dim: ${agent.hidden_dim}
-  t_dim: 256
+  s_dims: ${agent.s_dims}
+  t_dims: ${agent.t_dims}
+  crd_weight: ${agent.crd_weight}
   feat_dim: ${algo.feature_dim}
   nce_k: ${algo.K}
   n_data: 50000 # depends on the expert buffer size
@@ -59,7 +66,7 @@ algo:
   seed: 42
   baseline_bc_steps: 200000
   # baseline_bc_steps: 5
-  baseline_feat_steps: 5000 # finetune
+  baseline_feat_steps: 10000 # finetune
   # baseline_feat_steps: 5
   agent_feat_steps: 200000 # finetune
   # agent_feat_steps: 5000
@@ -71,6 +78,8 @@ algo:
   eval_episodes: 30
   # eval_episodes: 1
   feature_dim: 256
+  s_layers: 4
+  t_layers: 4
   K: 4096
   T: 0.07
   # T: 0.3

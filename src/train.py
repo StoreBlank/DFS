@@ -23,7 +23,7 @@ def main(cfg):
             name=cfg.algorithm + "_" + str(cfg.algo.seed),
             # mode="offline", 
         ) # e5715e3e5cbb09c9a47ea3fec24fdb0dd0fd9aa1
-    if cfg.algorithm == "vanilla_state_sac" or cfg.algorithm == "vanilla_visual_sac":
+    if cfg.algorithm == "vanilla_state_sac" or cfg.algorithm == "vanilla_visual_sac" or cfg.algorithm == "noisy_state_sac":
         train_sac(cfg)
     if cfg.algorithm == "vanilla_bc":
         train_bc(cfg)
