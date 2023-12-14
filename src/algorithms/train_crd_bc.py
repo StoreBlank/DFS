@@ -172,6 +172,6 @@ def train(args):
             torch.save(agent, os.path.join(model_dir, f"{step}.pt"))
 
         # Run training update
-        agent.update(contrastive_buffer, L, step)
+        agent.update(contrastive_buffer, L, step, visual_contrastive_task=)
 
     print("Completed training for", work_dir)

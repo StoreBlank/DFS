@@ -1,4 +1,4 @@
-algorithm: crd_bc
+algorithm: crd_bc_strong_aug
 
 env:
   domain_name: finger
@@ -27,13 +27,14 @@ agent:
   nce_k: ${algo.K}
   n_data: 50000 # depends on the expert buffer size
   mode: "visual" # not used
+  visual_contrastive_task: true # if set true will use strong aug for auged contrastive
 
 expert:
   name: state_sac
   mode: "state" # not used
   hidden_dim: 256 # not used
   model_path: ./ckpts/state_v1.pt
-  buffer_path: ./buffers/50000_v1.pkl
+  buffer_path: ./buffers/50000_v3.pkl
 
 algo:
   seed: 42
@@ -46,7 +47,7 @@ algo:
   K: 4096
   T: 0.07
   momentum: 0.5
-  crop: true
+  crop: "weak"
   image_crop_size: 84
   log_dir: logs
   save_video: true #

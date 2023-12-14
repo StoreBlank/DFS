@@ -25,13 +25,13 @@ def main(cfg):
         ) # e5715e3e5cbb09c9a47ea3fec24fdb0dd0fd9aa1
     if cfg.algorithm == "vanilla_state_sac" or cfg.algorithm == "vanilla_visual_sac":
         train_sac(cfg)
-    if cfg.algorithm == "vanilla_bc":
+    if cfg.algorithm == "vanilla_bc" or cfg.algorithm == "vanilla_bc_strong_aug":
         train_bc(cfg)
     if cfg.algorithm == "vanilla_aac":
         train_aac(cfg)
     if cfg.algorithm == "mopa":
         train_mopa(cfg)
-    if cfg.algorithm == "crd_bc":
+    if cfg.algorithm == "crd_bc" or cfg.algorithm == "crd_bc_strong_aug":
         train_crd_bc(cfg)
     if cfg.algorithm == "pure_crd":
         train_pure_crd(cfg)

@@ -1,4 +1,4 @@
-algorithm: vanilla_bc
+algorithm: vanilla_bc_strong_aug
 
 env:
   domain_name: finger
@@ -23,7 +23,7 @@ agent:
   mode: "visual" # not used
 
 expert:
-  buffer_path: ./buffers/50000.pkl
+  buffer_path: ./buffers/50000_v2.pkl
 
 algo:
   seed: 42
@@ -31,7 +31,7 @@ algo:
   save_freq: 50000
   eval_freq: 10000
   eval_episodes: 30
-  crop: true
+  crop: "strong" # or None for not use any aug, "weak" for just use crop
   image_crop_size: 84
   log_dir: logs
   save_video: true #

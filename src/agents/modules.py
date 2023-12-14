@@ -206,7 +206,7 @@ class VisualActor(nn.Module):
         self.mu_layer.apply(weight_init)
         self.log_std_layer.apply(weight_init)
 
-    def forward(self, x, compute_pi=True, compute_log_pi=True, detach=False, feat=False, pre_act=False):
+    def forward(self, x, compute_pi=True, compute_log_pi=True, detach=False, feat=False, pre_act=False, encoder_task=False):
         x = self.encoder(x, detach)
         f1_pre = self.layer_1(x)
         f1 = self.act(f1_pre)
@@ -216,6 +216,9 @@ class VisualActor(nn.Module):
         log_std = self.log_std_layer(f2)
         log_std = torch.tanh(log_std)
         log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
+
+        if encoder_task:
+            return x
 
         if compute_pi:
             std = log_std.exp()
