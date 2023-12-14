@@ -240,6 +240,8 @@ class CrdBC(BC):
             L.log('train_crd/actor_loss', loss, step)
             L.log('train_crd/kl_loss', loss_kl, step)
             L.log('train_crd/crd_loss', loss_crd, step)
+            if self.visual_contrastive_task:
+                L.log('train_crd/encoder_contrast_loss', loss_contrastive_task, step)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -265,7 +267,7 @@ class CrdBC(BC):
             aug_func = random.choice((utils.random_conv, utils.add_random_color_patch))
             obs_visual_contrastive = aug_func(obs_contrastive["visual"])
             obs=[obs, obs_visual_contrastive]
-            
+
         self.update_actor(obs, idxs, replay_buffer, L, step)
 
 
