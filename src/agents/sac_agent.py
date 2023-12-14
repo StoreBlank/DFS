@@ -234,3 +234,28 @@ class VisualSAC(SAC):
 
         if step % self.critic_target_update_freq == 0:
             self.soft_update_critic_target()
+
+
+class NoisyStateSAC(SAC):
+    def __init__(self, obs_shape, action_shape, args):
+        actor = m.NoisyStateActor(obs_shape, action_shape, args.hidden_dim, args.auged_obs_dim, args.aug)
+        critic = m.StateCritic(obs_shape, action_shape, args.hidden_dim)
+        super().__init__(obs_shape, action_shape, args, actor, critic)
+
+    def _obs_to_input(self, obs):
+        _obs = obs["state"]
+        _obs = torch.FloatTensor(_obs).cuda()
+        _obs = _obs.unsqueeze(0)
+        return _obs
+
+    def update(self, replay_buffer, L, step):
+        obs, action, reward, next_obs, not_done = replay_buffer.sample()
+        obs = obs["state"]
+        next_obs = next_obs["state"]
+        self.update_critic(obs, action, reward, next_obs, not_done, L, step)
+
+        if step % self.actor_update_freq == 0:
+            self.update_actor_and_alpha(obs, L, step)
+
+        if step % self.critic_target_update_freq == 0:
+            self.soft_update_critic_target()

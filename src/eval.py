@@ -65,7 +65,7 @@ def main(cfg):
             video_name = f"{algo}_{intensity}"
             reward = evaluate(env, agent, video, eval_episodes, video_name)
             print(f"Got reward {reward}")
-            df[algo, intensity] = reward
+            df.loc[algo, intensity] = reward
 
     df.to_csv(os.path.join(work_dir, "result.csv"))
 

@@ -7,6 +7,7 @@ from IPython import embed
 
 LOG_STD_MAX = 2
 LOG_STD_MIN = -10
+eps = 1e-7
 
 
 def _get_out_shape_cuda(in_shape, layers):
@@ -195,22 +196,24 @@ class VisualActor(nn.Module):
     def __init__(self, encoder, action_shape, hidden_dim, activation=nn.ReLU):
         super().__init__()
         self.encoder = encoder
-        self.mlp = mlp(
-            [self.encoder.out_dim] + [hidden_dim, hidden_dim],
-            activation,
-            output_activation=activation,
-        )
+        self.layer_1 = nn.Linear(encoder.out_dim, hidden_dim)
+        self.layer_2 = nn.Linear(hidden_dim, hidden_dim)
+        self.act = activation()
         self.mu_layer = nn.Linear(hidden_dim, action_shape[0])
         self.log_std_layer = nn.Linear(hidden_dim, action_shape[0])
-        self.mlp.apply(weight_init)
+        self.layer_1.apply(weight_init)
+        self.layer_2.apply(weight_init)
         self.mu_layer.apply(weight_init)
         self.log_std_layer.apply(weight_init)
 
-    def forward(self, x, compute_pi=True, compute_log_pi=True, detach=False):
+    def forward(self, x, compute_pi=True, compute_log_pi=True, detach=False, feat=False, pre_act=False):
         x = self.encoder(x, detach)
-        x = self.mlp(x)
-        mu = self.mu_layer(x)
-        log_std = self.log_std_layer(x)
+        f1_pre = self.layer_1(x)
+        f1 = self.act(f1_pre)
+        f2_pre = self.layer_2(f1)
+        f2 = self.act(f2_pre)
+        mu = self.mu_layer(f2)
+        log_std = self.log_std_layer(f2)
         log_std = torch.tanh(log_std)
         log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
 
@@ -229,25 +232,42 @@ class VisualActor(nn.Module):
 
         mu, pi, log_pi = squash(mu, pi, log_pi)
 
-        return mu, pi, log_pi, log_std
+        if pre_act:
+            return mu, pi, log_pi, log_std, [f1_pre, f1, f2_pre, f2]
+        elif feat:
+            return mu, pi, log_pi, log_std, [f1, f2]
+        else:
+            return mu, pi, log_pi, log_std
+
+    def feature_layers(self):
+        return [self.encoder, self.layer_1, self.layer_2, self.act]
+
+    def last_layer(self):
+        return [self.mu_layer, self.log_std_layer]
+
+    def freeze_feature_layers(self):
+        for layer in self.feature_layers():
+            for param in layer.parameters():
+                param.requires_grad = False
 
 
 class StateActor(nn.Module):
     def __init__(self, obs_shape, action_shape, hidden_dim, activation=nn.ReLU):
         super().__init__()
-        self.net = mlp(
-            list(obs_shape) + [hidden_dim, hidden_dim],
-            activation,
-            output_activation=activation,
-        )
+        self.layer_1 = nn.Linear(obs_shape[0], hidden_dim)
+        self.layer_2 = nn.Linear(hidden_dim, hidden_dim)
+        self.act = activation()
         self.mu_layer = nn.Linear(hidden_dim, action_shape[0])
         self.log_std_layer = nn.Linear(hidden_dim, action_shape[0])
         self.apply(weight_init)
 
-    def forward(self, obs, compute_pi=True, compute_log_pi=True):
-        net_out = self.net(obs)
-        mu = self.mu_layer(net_out)
-        log_std = self.log_std_layer(net_out)
+    def forward(self, obs, compute_pi=True, compute_log_pi=True, feat=False, pre_act=False):
+        f1_pre = self.layer_1(obs)
+        f1 = self.act(f1_pre)
+        f2_pre = self.layer_2(f1)
+        f2 = self.act(f2_pre)
+        mu = self.mu_layer(f2)
+        log_std = self.log_std_layer(f2)
         log_std = torch.tanh(log_std)
         log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
 
@@ -266,7 +286,79 @@ class StateActor(nn.Module):
 
         mu, pi, log_pi = squash(mu, pi, log_pi)
 
-        return mu, pi, log_pi, log_std
+        if pre_act:
+            return mu, pi, log_pi, log_std, [f1_pre, f1, f2_pre, f2]
+        elif feat:
+            return mu, pi, log_pi, log_std, [f1, f2]
+        else:
+            return mu, pi, log_pi, log_std
+
+
+class NoisyStateActor(nn.Module):
+    """
+    Augment the state observation with Gaussian noise.
+    """
+    def __init__(self, obs_shape, action_shape, hidden_dim, auged_obs_dim, aug, activation=nn.ReLU):
+        super().__init__()
+        self.layer_1 = nn.Linear(auged_obs_dim, hidden_dim)
+        self.layer_2 = nn.Linear(hidden_dim, hidden_dim)
+        self.act = activation()
+        self.mu_layer = nn.Linear(hidden_dim, action_shape[0])
+        self.log_std_layer = nn.Linear(hidden_dim, action_shape[0])
+        self.auged_obs_dim = auged_obs_dim
+        self.aug = aug
+        if aug == "linear":
+            self.aug_layer = nn.Linear(auged_obs_dim, auged_obs_dim)
+            # freeze the aug_layer
+            for param in self.aug_layer.parameters():
+                param.requires_grad = False
+        self.apply(weight_init)
+
+    def _aug_obs(self, obs):
+        bsz = obs.shape[0]
+        noise = torch.randn(bsz, self.auged_obs_dim - obs.shape[1]).to(obs.device)
+        auged_obs = torch.cat([obs, noise], dim=1)
+        if self.aug == "shuffle":
+            auged_obs = auged_obs[:, torch.randperm(auged_obs.shape[1])]
+            return auged_obs
+        elif self.aug == "linear":
+            auged_obs = self.aug_layer(auged_obs)
+            return auged_obs
+        else:
+            return auged_obs
+        
+    def forward(self, obs, compute_pi=True, compute_log_pi=True, feat=False, pre_act=False):
+        auged_obs = self._aug_obs(obs)
+        f1_pre = self.layer_1(auged_obs)
+        f1 = self.act(f1_pre)
+        f2_pre = self.layer_2(f1)
+        f2 = self.act(f2_pre)
+        mu = self.mu_layer(f2)
+        log_std = self.log_std_layer(f2)
+        log_std = torch.tanh(log_std)
+        log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
+
+        if compute_pi:
+            std = log_std.exp()
+            noise = torch.randn_like(mu)
+            pi = mu + noise * std
+        else:
+            pi = None
+            entropy = None
+
+        if compute_log_pi:
+            log_pi = gaussian_logprob(noise, log_std)
+        else:
+            log_pi = None
+
+        mu, pi, log_pi = squash(mu, pi, log_pi)
+
+        if pre_act:
+            return mu, pi, log_pi, log_std, [f1_pre, f1, f2_pre, f2]
+        elif feat:
+            return mu, pi, log_pi, log_std, [f1, f2]
+        else:
+            return mu, pi, log_pi, log_std
 
 
 class MLPQFunction(nn.Module):
@@ -371,3 +463,100 @@ class VisualCritic(nn.Module):
 
 # 	def forward(self, x):
 # 		return self.mlp(self.encoder(x))
+
+
+def contrast_loss(x, residual):
+    # loss for positive pair
+    P_pos = x[:, 0]
+    log_D1 = torch.log(P_pos / (P_pos + residual + eps))
+
+    # loss for negative pairs
+    P_neg = x[:, 1:]
+    log_D0 = torch.log(residual / (P_neg + residual + eps)).sum(1)
+
+    assert log_D1.dim() == log_D0.dim() == 1
+    loss = - (log_D1 + log_D0).mean()
+
+    return loss
+
+
+class CRDLoss(nn.Module):
+    """
+    CRD Loss function
+    includes two symmetric parts:
+    (a) using teacher as anchor, choose positive and negatives over the student side
+    (b) using student as anchor, choose positive and negatives over the teacher side
+
+    Args:
+        opt.s_dims: the dimension of student's features
+        opt.t_dims: the dimension of teacher's features
+        opt.feat_dim: the dimension of the projection space
+        opt.nce_k: number of negatives paired with each positive
+        opt.n_data: the number of samples in the training set, therefor the memory buffer is: opt.n_data x opt.feat_dim
+    """
+    def __init__(self, opt):
+        super().__init__()
+        # self.embed_s = nn.Sequential(
+        #     nn.Flatten(),
+        #     nn.Linear(opt.s_dim, opt.feat_dim),
+        # )
+        self.embeds_s = []
+        for s_dim in opt.s_dims:
+            self.embeds_s.append(nn.Sequential(
+                nn.Flatten(),
+                nn.Linear(s_dim, opt.feat_dim),
+            ))
+        self.embeds_s = nn.ModuleList(self.embeds_s)
+        # self.embed_t = nn.Sequential(
+        #     nn.Flatten(),
+        #     nn.Linear(opt.t_dim, opt.feat_dim),
+        # )
+        self.embeds_t = []
+        for t_dim in opt.t_dims:
+            self.embeds_t.append(nn.Sequential(
+                nn.Flatten(),
+                nn.Linear(t_dim, opt.feat_dim),
+            ))
+        self.embeds_t = nn.ModuleList(self.embeds_t)
+        self.crd_weight = opt.crd_weight
+        self.residual = opt.nce_k / opt.n_data
+        self.apply(weight_init)
+
+    def forward(self, fs_s, fs_t, idx, buffer, contrast_idx=None):
+        """
+        Args:
+            fs_s: the features of student network, a list, each element size [batch_size, s_dim]
+            fs_t: the features of teacher network, a list, each element size [batch_size, t_dim]
+            idx: the indices of these positive samples in the dataset, size [batch_size]
+            buffer: contrastive buffer
+            contrast_idx: the indices of negative samples, size [batch_size, nce_k]
+
+        Returns:
+            The contrastive loss
+        """
+        # f_s = self.embed_s(f_s)
+        # f_t = self.embed_t(f_t)
+        # f_s = F.normalize(f_s, dim=1)
+        # f_t = F.normalize(f_t, dim=1)
+        for i, f_s in enumerate(fs_s):
+            fs_s[i] = self.embeds_s[i](f_s)
+            fs_s[i] = F.normalize(fs_s[i], dim=1)
+        for i, f_t in enumerate(fs_t):
+            fs_t[i] = self.embeds_t[i](f_t)
+            fs_t[i] = F.normalize(fs_t[i], dim=1)
+        # out_s, out_t = buffer.contrast(f_s, f_t, idx, contrast_idx) # take out contrast pair
+        loss = 0
+        # for logging
+        losses = np.zeros((len(fs_s), len(fs_t)))
+        for i in range(len(fs_s)):
+            for j in range(len(fs_t)):
+                if self.crd_weight[i][j] != 0:
+                    out_s, out_t = buffer.contrast(fs_s[i], fs_t[j], i, j, idx, contrast_idx) # take out contrast pair
+                    s_loss = contrast_loss(out_s, self.residual)
+                    t_loss = contrast_loss(out_t, self.residual)
+                    loss += self.crd_weight[i][j] * (s_loss + t_loss)
+                    losses[i][j] = (s_loss + t_loss).detach().cpu().numpy()
+        # s_loss = contrast_loss(out_s, self.residual)
+        # t_loss = contrast_loss(out_t, self.residual)
+        # loss = s_loss + t_loss
+        return loss, losses

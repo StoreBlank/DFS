@@ -5,7 +5,7 @@ import gym
 import utils
 import time
 from env.wrappers import make_env
-from agents.sac_agent import StateSAC, VisualSAC
+from agents.sac_agent import StateSAC, VisualSAC, NoisyStateSAC
 from logger import Logger
 from datetime import datetime
 from video import VideoRecorder
@@ -110,6 +110,12 @@ def train(args):
     # print("Cropped observations:", cropped_obs_shape)
     if algo_config.mode == "state":
         agent = StateSAC(
+            obs_shape=env.observation_space["state"].shape,
+            action_shape=env.action_space.shape,
+            args=agent_config,
+        )
+    elif algo_config.mode == "noisy_state":
+        agent = NoisyStateSAC(
             obs_shape=env.observation_space["state"].shape,
             action_shape=env.action_space.shape,
             args=agent_config,

@@ -14,7 +14,7 @@ agent:
   name: state_sac # ! used in code
   mode: "state" # not used
   hidden_dim: 256 # not used
-  model_path: "./ckpts/state.pt"
+  model_path: "./ckpts/state_v2.pt"
 
 algo:
   seed: 42

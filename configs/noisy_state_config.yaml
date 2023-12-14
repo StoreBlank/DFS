@@ -1,4 +1,4 @@
-algorithm: vanilla_state_sac
+algorithm: noisy_state_sac
 
 env:
   domain_name: finger
@@ -8,13 +8,15 @@ env:
   image_size: 100
   episode_length: 1000
   eval_mode: null
-  distracting_cs_intensity: 0
+  distracting_cs_intensity: 0.1
 
 agent:
-  name: state_sac
+  name: noisy_state_sac
   discount: 0.99
   init_temperature: 0.3
   hidden_dim: 256
+  auged_obs_dim: 100
+  aug: null
   actor_lr: 0.001
   actor_beta: 0.9
   actor_update_freq: 2
@@ -27,7 +29,7 @@ agent:
 
 algo:
   seed: 42
-  mode: state
+  mode: noisy_state
   train_steps: 500000
   init_steps: 100
   batch_size: 128
