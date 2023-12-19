@@ -1,6 +1,7 @@
 algorithm: noisy_state_sac
 
 env:
+  category: dmc
   domain_name: finger
   task_name: spin
   frame_stack: 3

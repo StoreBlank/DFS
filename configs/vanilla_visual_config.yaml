@@ -3,6 +3,7 @@ algorithm: vanilla_visual_sac
 
 # select env
 env:
+  category: dmc
   domain_name: finger
   task_name: spin
   frame_stack: 3

@@ -1,6 +1,7 @@
 algorithm: pure_crd
 
 env:
+  category: dmc
   domain_name: finger
   task_name: spin
   frame_stack: 3
@@ -27,8 +28,8 @@ agent:
   crd_weight: [
     [0.0, 0.0, 0.0, 0.0],
     [0.0, 0.0, 0.0, 0.0],
-    [0.0, 0.0, 1.0, 0.0],
-    [0.0, 0.0, 0.0, 0.0]
+    [0.0, 0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0]
   ]
   feat_dim: ${algo.feature_dim}
   nce_k: ${algo.K}
@@ -71,7 +72,7 @@ algo:
   agent_feat_steps: 200000 # finetune
   # agent_feat_steps: 5000
   feat_num: 1000
-  agent_last_layer_steps: 5000 # finetune
+  agent_last_layer_steps: 10000 # finetune
   # agent_last_layer_steps: 5
   agent_eval_freq: 1000
   batch_size: 128

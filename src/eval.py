@@ -39,26 +39,46 @@ def main(cfg):
     intensities = cfg.intensities
     save_video = cfg.save_video
     eval_episodes = cfg.eval_episodes
+    log_dir = cfg.log_dir
     env_config = cfg.env
 
-    work_dir = f"./logs/{env_config.domain_name}_{env_config.task_name}/eval/{str(datetime.now())}/"
+    # work_dir = f"./logs/{env_config.domain_name}_{env_config.task_name}/eval/{str(datetime.now())}/"
+    if env_config.category == 'dmc':
+        env_config.env_id = env_config.domain_name + "_" + env_config.task_name
+    work_dir = os.path.join(
+        log_dir,
+        env_config.env_id,
+        "eval",
+        str(datetime.now()),
+    )
     video_dir = utils.make_dir(os.path.join(work_dir, "video"))
     video = VideoRecorder(video_dir if save_video else None, height=448, width=448)
     df = pd.DataFrame(columns=intensities, index=list(algos.keys()))
 
     for intensity in intensities:
         print(f"Init env with intensity {intensity}")
-        env = make_env(
-            domain_name=env_config.domain_name,
-            task_name=env_config.task_name,
-            seed=42,
-            episode_length=env_config.episode_length,
-            action_repeat=env_config.action_repeat,
-            image_size=env_config.image_size,
-            frame_stack=env_config.frame_stack,
-            mode="distracting_cs",
-            intensity=intensity,
-        )
+        if env_config.category == 'dmc':
+            env = make_env(
+                category=env_config.category,
+                domain_name=env_config.domain_name,
+                task_name=env_config.task_name,
+                seed=42,
+                episode_length=env_config.episode_length,
+                action_repeat=env_config.action_repeat,
+                image_size=env_config.image_size,
+                frame_stack=env_config.frame_stack,
+                # mode="train",
+                mode="distracting_cs",
+                intensity=env_config.distracting_cs_intensity,
+            )
+        elif env_config.category == 'maniskill':
+            env = make_env(
+                category=env_config.category,
+                env_id=env_config.env_id,
+                frame_stack=env_config.frame_stack,
+                control_mode=env_config.control_mode,
+                renderer_kwargs=env_config.renderer_kwargs,
+            )
         for algo, path in algos.items():
             print(f"--- Loading {algo} weights from {path} ---")
             agent = torch.load(path)

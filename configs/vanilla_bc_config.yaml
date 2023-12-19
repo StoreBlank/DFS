@@ -1,6 +1,7 @@
 algorithm: vanilla_bc
 
 env:
+  category: dmc
   domain_name: finger
   task_name: spin
   frame_stack: 3

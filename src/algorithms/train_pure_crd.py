@@ -1,7 +1,6 @@
 import torch
 import os
 import numpy as np
-import gym
 import utils
 import time
 from env.wrappers import make_env
@@ -9,10 +8,10 @@ from agents.bc_agent import FeatBaselineBC, PureCrdBC
 from logger import Logger
 from datetime import datetime
 from video import VideoRecorder
-from ipdb import set_trace
 from matplotlib import pyplot as plt
 from sklearn.manifold import TSNE
 import pandas as pd
+from ipdb import set_trace
 
 
 def evaluate(env, agent, video, num_episodes, L, step, test_env=False):
@@ -75,7 +74,6 @@ def train(args):
     utils.set_seed_everywhere(algo_config.seed)
 
     # Initialize environments
-    gym.logger.set_level(40)
     # env = make_env(
     #     domain_name=env_config.domain_name,
     #     task_name=env_config.task_name,
@@ -86,23 +84,35 @@ def train(args):
     #     frame_stack=env_config.frame_stack,
     #     mode="train",
     # )
-    env = make_env(
-        domain_name=env_config.domain_name,
-        task_name=env_config.task_name,
-        seed=algo_config.seed,
-        episode_length=env_config.episode_length,
-        action_repeat=env_config.action_repeat,
-        image_size=env_config.image_size,
-        frame_stack=env_config.frame_stack,
-        # mode="train",
-        mode="distracting_cs",
-        intensity=env_config.distracting_cs_intensity,
-    )
+    if env_config.category == 'dmc':
+        env = make_env(
+            category=env_config.category,
+            domain_name=env_config.domain_name,
+            task_name=env_config.task_name,
+            seed=algo_config.seed,
+            episode_length=env_config.episode_length,
+            action_repeat=env_config.action_repeat,
+            image_size=env_config.image_size,
+            frame_stack=env_config.frame_stack,
+            # mode="train",
+            mode="distracting_cs",
+            intensity=env_config.distracting_cs_intensity,
+        )
+    elif env_config.category == 'maniskill':
+        env = make_env(
+            category=env_config.category,
+            env_id=env_config.env_id,
+            frame_stack=env_config.frame_stack,
+            control_mode=env_config.control_mode,
+            renderer_kwargs=env_config.renderer_kwargs,
+        )
 
     # Create working directory
+    if env_config.category == 'dmc':
+        env_config.env_id = env_config.domain_name + "_" + env_config.task_name
     work_dir = os.path.join(
         algo_config.log_dir,
-        env_config.domain_name + "_" + env_config.task_name,
+        env_config.env_id,
         args.algorithm,
         str(algo_config.seed),
         str(datetime.now()),
@@ -125,7 +135,7 @@ def train(args):
     contrastive_buffer_baseline = utils.ContrastBuffer.load(expert_config.buffer_path, algo_config)
     contrastive_buffer_agent = utils.ContrastBuffer.load(expert_config.buffer_path, algo_config)
     cropped_visual_obs_shape = (
-        3 * env_config.frame_stack,
+        env.observation_space['visual'].shape[0],
         algo_config.image_crop_size,
         algo_config.image_crop_size,
     )
@@ -271,7 +281,7 @@ def train(args):
     # record final result
     df = pd.DataFrame(columns=['x', 'y', 'crd_ratio', 'agent_score'])
     x = agent_config.crd_weight[0][0]
-    y = agent_config.crd_weight[2][2]
+    y = agent_config.crd_weight[1][1]
     crd_ratio = agent_crd_loss / baseline_crd_loss
     df.loc[0] = [x, y, crd_ratio, agent_performance]
     df.to_csv(os.path.join(work_dir, "result.csv"))

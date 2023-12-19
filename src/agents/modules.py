@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from IPython import embed
+from ipdb import set_trace
 
 
 LOG_STD_MAX = 2
