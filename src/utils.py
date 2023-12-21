@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
+import torchvision.transforms as transform
 import numpy as np
 import os
 import glob
@@ -184,6 +185,16 @@ def add_random_color_patch(images, patch_size=24):
             images[i][3*j:3*j+3] = TF.to_tensor(image)
     return images*255
 
+def random_affine(images):
+    batch_size, channels, height, width = images.size()
+    for i in range(batch_size):
+        for j in range(3):
+            image = images[i][3*j:3*j+3]
+            image = TF.to_pil_image(image)
+            fill_color=(random.randint(0,255), random.randint(0,255), random.randint(0,255))
+            output = transform.RandomAffine(degrees=(0,20), translate=(0.1, 0.2), shear=(0,20), fill=fill_color)(image)
+            images[i][3*j:3*j+3] = TF.to_tensor(output)
+    return images*255
 
 def view_as_windows_cuda(x, window_shape):
     """PyTorch CUDA-enabled implementation of view_as_windows"""
@@ -355,7 +366,7 @@ class ReplayBuffer(object):
         func = random.choice(funcs)
         obs["visual"] = func(obs["visual"])
         next_obs["visual"] = func(next_obs["visual"])
-        
+
         if return_idxs:
             return obs, actions, mus, log_stds, rewards, next_obs, not_dones, idxs
         return obs, actions, mus, log_stds, rewards, next_obs, not_dones

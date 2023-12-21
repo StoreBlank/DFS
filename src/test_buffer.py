@@ -3,8 +3,10 @@ import numpy as np
 import torch.nn.functional as F
 import torch
 import torchvision.transforms.functional as TF
+import torchvision.transforms as transform
 import random
 import PIL.Image as Image
+from tqdm import trange
 
 from utils import random_crop
 
@@ -39,6 +41,18 @@ def add_random_color_patch(images, patch_size=24):
             images[i][3*j:3*j+3] = TF.to_tensor(image)
     return images*255
 
+def random_affine(images):
+    batch_size, channels, height, width = images.size()
+    for i in range(batch_size):
+        for j in range(3):
+            image = images[i][3*j:3*j+3]
+            image = TF.to_pil_image(image)
+            fill_color=(random.randint(0,255), random.randint(0,255), random.randint(0,255))
+            output = transform.RandomAffine(degrees=(0,30), translate=(0.1, 0.2), shear=(0,30), fill=fill_color)(image)
+            images[i][3*j:3*j+3] = TF.to_tensor(output)
+    return images*255
+
+
 def visualize(images, start=0):
     # 128, 9, 100, 100 where 9 is three continous frame
     image_array = np.array(images[0].cpu())[0:3]
@@ -58,8 +72,10 @@ def visualize(images, start=0):
 
 def aug_test():
     buffer=ReplayBuffer.load("./buffers/50000_v2.pkl")
-    obs, actions, mus, log_stds, rewards, next_obs, not_dones = buffer.behavior_costom_aug_sample(random_conv, random_crop, gaussian, add_random_color_patch)
+    obs, actions, mus, log_stds, rewards, next_obs, not_dones = buffer.behavior_costom_aug_sample(random_conv, random_crop, add_random_color_patch)
     images = obs["visual"] # 128, 9, 100, 100
+
+    images = random_affine(images)
 
     # k=random.random()
     # if k<0.5:
@@ -78,6 +94,42 @@ def sample_test():
     print(obs["visual"].shape)
     print(next_obs["visual"].shape)
 
+def encoder_self_mse_test():
+    buffer=ReplayBuffer.load("./logs/finger_spin/visualbc_buffer_collector/42/2023-12-13 20:24:51.953302/5000.pkl")
+    crdbc=torch.load("./logs/finger_spin/crd_bc/42/2023-12-14 09:46:36.810582/model/200000.pt")
+    bc=torch.load("./logs/finger_spin/vanilla_bc/42/2023-12-14 13:40:35.229162/model/200000.pt")
+    
+    crdbc_encoder = crdbc.actor.encoder
+    bc_encoder = bc.actor.encoder
+
+    crd_loss = 0
+    bc_loss = 0
+
+    for i in trange(30):
+        obs, _, _, _, _ = buffer.sample()
+        obs_visual = obs["visual"]
+        auged_obs_visual = obs["visual"].clone()
+
+        if i <15:
+            auged_obs_visual = random_conv(auged_obs_visual)
+        else:
+            auged_obs_visual = add_random_color_patch(auged_obs_visual)
+
+        with torch.no_grad():
+            crd_feat1 = crdbc_encoder(obs_visual, detach=True)
+            crd_feat2 = crdbc_encoder(auged_obs_visual, detach=True)
+            bc_feat1 = bc_encoder(obs_visual, detach=True)
+            bc_feat2 = bc_encoder(auged_obs_visual, detach=True)
+        
+        crdbc_encoder_loss = F.mse_loss(crd_feat1, crd_feat2)
+        bc_encoder_loss = F.mse_loss(bc_feat1, bc_feat2)
+        crd_loss+=crdbc_encoder_loss
+        bc_loss+=bc_encoder_loss
+
+    print(crd_loss/30)
+    print(bc_loss/30)
+
 if __name__ == "__main__":
     aug_test()
     # sample_test()
+    # encoder_self_mse_test()

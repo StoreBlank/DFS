@@ -8,7 +8,7 @@ env:
   image_size: 100
   episode_length: 1000
   eval_mode: null
-  distracting_cs_intensity: 0.1
+  distracting_cs_intensity: 0
 
 agent:
   name: vanilla_bc # not used
@@ -21,9 +21,10 @@ agent:
   actor_beta: 0.9 
   bc_lr: 0.001 # bc
   mode: "visual" # not used
+  visual_contrastive_task: false # visual task for encoder
 
 expert:
-  buffer_path: ./buffers/50000_v2.pkl
+  buffer_path: ./buffers/50000_intensity0.pkl
 
 algo:
   seed: 42
