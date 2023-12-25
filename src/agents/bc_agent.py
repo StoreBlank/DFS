@@ -8,6 +8,7 @@ import agents.modules as m
 from agents.sac_agent import SAC, StateSAC
 from ipdb import set_trace
 
+import random
 
 eps = 1e-7
 
@@ -42,6 +43,8 @@ class BC(SAC):
             self.actor.parameters(), lr=agent_config.bc_lr, betas=(agent_config.actor_beta, 0.999)
         )
 
+        self.visual_contrastive_task = agent_config.visual_contrastive_task
+        
         self.train()
 
     # rewrite obs
@@ -60,6 +63,10 @@ class BC(SAC):
         self.actor.train(training)
 
     def update_actor(self, obs, mu_target, log_std_target, L=None, step=None):
+        if self.visual_contrastive_task:
+            obs_visual_auged = obs[1]
+            obs = obs[0]
+
         obs_visual = obs["visual"]
 
         mu_pred, _, _, log_std_pred = self.actor(obs_visual, False, False)
@@ -69,8 +76,16 @@ class BC(SAC):
             torch.atanh(mu_pred), log_std_pred, torch.atanh(mu_target), log_std_target
         ).mean()
 
+        if self.visual_contrastive_task:
+            encoder_feature_auged = self.actor(obs_visual_auged, encoder_task=True)
+            encoder_feature_origin = self.actor(obs_visual, encoder_task=True)
+            loss_contrastive_task = F.mse_loss(encoder_feature_auged, encoder_feature_origin)
+            loss += loss_contrastive_task
+
         if L is not None:
             L.log("train_bc/actor_loss", loss, step)
+            if self.visual_contrastive_task:
+                L.log("train_bc/encoder_contrast_loss", loss_contrastive_task, step)
 
         self.actor_optimizer.zero_grad()
         loss.backward()
@@ -78,9 +93,23 @@ class BC(SAC):
 
     def update(self, replay_buffer, L, step):
         if self.use_aug:
-            obs, _, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_aug_sample()
+            if self.use_aug == "weak":
+                obs, _, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_aug_sample()
+            elif self.use_aug == "strong":
+                obs, _, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_costom_aug_sample(utils.add_random_color_patch, utils.gaussian, utils.random_conv, utils.random_crop, utils.random_affine)
+            else:
+                raise NotImplementedError("use_aug in config can be None or 'weak' or 'strong' ")
         else:
             obs, _, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_sample()
+
+        if self.visual_contrastive_task:
+            # later put this into buffer
+            obs_visual_contrastive = obs["visual"].clone()
+            
+            aug_func = random.choice((utils.random_conv, utils.add_random_color_patch))
+            obs_visual_contrastive = aug_func(obs_visual_contrastive)
+            obs_visual_contrastive = utils.random_affine(obs_visual_contrastive)
+            obs=[obs, obs_visual_contrastive]
 
         self.update_actor(obs, mu_target, log_std_target, L, step)
 
@@ -198,6 +227,8 @@ class CrdBC(BC):
         )
         self.lambda_crd = agent_config.lambda_crd
 
+        self.visual_contrastive_task = agent_config.visual_contrastive_task
+
         self.train()
 
     def set_expert(self, expert):
@@ -208,6 +239,10 @@ class CrdBC(BC):
         self.expert = None
 
     def update_actor(self, obs, idxs, contrastive_buffer, L=None, step=None):
+        if self.visual_contrastive_task:
+            obs_visual_auged = obs[1]
+            obs = obs[0]
+        
         obs_visual = obs['visual']
         obs_state = obs['state']
 
@@ -224,10 +259,18 @@ class CrdBC(BC):
         loss_crd = self.criterion(feat_s, feat_t, idxs, contrastive_buffer)
         loss = loss_kl + self.lambda_crd * loss_crd
 
+        if self.visual_contrastive_task:
+            encoder_feature_auged = self.actor(obs_visual_auged, encoder_task=True)
+            encoder_feature_origin = self.actor(obs_visual, encoder_task=True)
+            loss_contrastive_task = F.mse_loss(encoder_feature_auged, encoder_feature_origin)
+            loss += loss_contrastive_task
+
         if L is not None:
             L.log('train_crd/actor_loss', loss, step)
             L.log('train_crd/kl_loss', loss_kl, step)
             L.log('train_crd/crd_loss', loss_crd, step)
+            if self.visual_contrastive_task:
+                L.log('train_crd/encoder_contrast_loss', loss_contrastive_task, step)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -235,9 +278,25 @@ class CrdBC(BC):
 
     def update(self, replay_buffer, L, step):
         if self.use_aug:
-            obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_aug_sample(return_idxs=True)
+            if self.use_aug == "weak":
+                obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_aug_sample(return_idxs=True)
+            elif self.use_aug == "strong":
+                print("strong aug")
+                obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_costom_aug_sample(utils.add_random_color_patch, utils.gaussian, utils.random_conv, utils.random_crop, utils.random_affine, return_idxs=True)
+            else:
+                raise NotImplementedError("use_aug in config can be None or 'weak' or 'strong' ")
         else:
+            print("no_aug")
             obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_sample(return_idxs=True)
+        
+        if self.visual_contrastive_task:
+            # later put this into buffer
+            obs_visual_contrastive = obs["visual"].clone()
+            
+            aug_func = random.choice((utils.random_conv, utils.add_random_color_patch))
+            obs_visual_contrastive = aug_func(obs_visual_contrastive)
+            obs_visual_contrastive = utils.random_affine(obs_visual_contrastive)
+            obs=[obs, obs_visual_contrastive]
 
         self.update_actor(obs, idxs, replay_buffer, L, step)
 

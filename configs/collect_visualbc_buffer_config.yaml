@@ -9,13 +9,13 @@ env:
   image_size: 100
   episode_length: 1000
   eval_mode: null
-  distracting_cs_intensity: 0.1
+  distracting_cs_intensity: 0 # 
 
 agent:
   model_path: "./ckpts/state_v2.pt"
 
 algo:
   seed: 42
-  rollout_steps: 50000 # 500000
+  rollout_steps: 50000
   batch_size: 128
   log_dir: logs

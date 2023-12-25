@@ -29,7 +29,7 @@ def evaluate(env, agent, video, num_episodes, video_name):
 
         video.save(f"{video_name}.mp4")
         episode_rewards.append(episode_reward)
-        print("saved!")
+        # print("saved!")
     return np.mean(episode_rewards)
 
 

@@ -22,7 +22,7 @@ env:
 agent:
   name: state_sac
   discount: 0.99
-  init_temperature: 0.3
+  init_temperature: 0.2
   hidden_dim: 256
   actor_lr: 0.001
   actor_beta: 0.9
@@ -38,7 +38,7 @@ algo:
   seed: 42
   mode: state
   train_steps: 500000
-  init_steps: 100
+  init_steps: 1000
   batch_size: 128
   save_freq: 100000
   eval_freq: 10000

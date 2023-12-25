@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.transforms.functional as TF
+import torchvision.transforms as transform
 import numpy as np
 import os
 import glob
@@ -152,6 +154,47 @@ def random_crop(x, size=84, w1=None, h1=None, return_w1_h1=False):
 
     return cropped
 
+def gaussian(x, mean=0., std=0.02):
+    """Additive Gaussian noise"""
+    return x + torch.randn_like(x) * std + mean
+
+def random_conv(images):
+    """Applies a random conv2d, deviates slightly from https://arxiv.org/abs/1910.05396"""
+    b, c, h, w = images.shape
+    for i in range(b):
+        for j in range(3):
+            weights = torch.randn(3, 3, 3, 3).to(images.device)
+            temp_image = images[i:i + 1][3*j:3*j+3].reshape(-1, 3, h, w) / 255.
+            temp_image = F.pad(temp_image, pad=[1] * 4, mode='replicate')
+            out = torch.sigmoid(F.conv2d(temp_image, weights)) * 255.
+            total_out = out if i == 0 and j == 0 else torch.cat([total_out, out], axis=0)
+    return total_out.reshape(b, c, h, w)
+
+def add_random_color_patch(images, patch_size=24):
+    batch_size, channels, height, width = images.size()
+    for i in range(batch_size):
+        for j in range(3): # three with different patch
+            x = random.randint(0, width - patch_size)
+            y = random.randint(0, height - patch_size)
+            color = (random.random()*255, random.random()*255, random.random()*255) 
+            image = images[i][3*j:3*j+3]
+            image = TF.to_pil_image(image)
+            patch = TF.pil_to_tensor(image.crop((x, y, x+patch_size, y+patch_size)))
+            patch[:, :, :] = torch.tensor(color).view(3, 1, 1)
+            image.paste(TF.to_pil_image(patch), (x, y))
+            images[i][3*j:3*j+3] = TF.to_tensor(image)
+    return images*255
+
+def random_affine(images):
+    batch_size, channels, height, width = images.size()
+    for i in range(batch_size):
+        for j in range(3):
+            image = images[i][3*j:3*j+3]
+            image = TF.to_pil_image(image)
+            fill_color=(random.randint(0,255), random.randint(0,255), random.randint(0,255))
+            output = transform.RandomAffine(degrees=(0,20), translate=(0.1, 0.2), shear=(0,20), fill=fill_color)(image)
+            images[i][3*j:3*j+3] = TF.to_tensor(output)
+    return images*255
 
 def view_as_windows_cuda(x, window_shape):
     """PyTorch CUDA-enabled implementation of view_as_windows"""
@@ -318,11 +361,14 @@ class ReplayBuffer(object):
             return obs, actions, mus, log_stds, rewards, next_obs, not_dones, idxs
         return obs, actions, mus, log_stds, rewards, next_obs, not_dones
 
-    def behavior_costom_aug_sample(self, func, n=None):
-        obs, actions, mus, log_stds, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
+    def behavior_costom_aug_sample(self, *funcs, n=None, return_idxs=False):
+        obs, actions, mus, log_stds, rewards, next_obs, not_dones, idxs = self.__sample__(n=n)
+        func = random.choice(funcs)
         obs["visual"] = func(obs["visual"])
         next_obs["visual"] = func(next_obs["visual"])
 
+        if return_idxs:
+            return obs, actions, mus, log_stds, rewards, next_obs, not_dones, idxs
         return obs, actions, mus, log_stds, rewards, next_obs, not_dones
 
 
