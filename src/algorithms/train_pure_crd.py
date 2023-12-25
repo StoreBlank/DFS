@@ -1,7 +1,6 @@
 import torch
 import os
 import numpy as np
-import gym
 import utils
 import time
 from env.wrappers import make_env
@@ -9,9 +8,10 @@ from agents.bc_agent import FeatBaselineBC, PureCrdBC
 from logger import Logger
 from datetime import datetime
 from video import VideoRecorder
-from ipdb import set_trace
 from matplotlib import pyplot as plt
 from sklearn.manifold import TSNE
+import pandas as pd
+from ipdb import set_trace
 
 
 def evaluate(env, agent, video, num_episodes, L, step, test_env=False):
@@ -46,13 +46,19 @@ def evaluate(env, agent, video, num_episodes, L, step, test_env=False):
 
 
 def feature_show(agent, buffer, feat_num, save_path):
-    feat_s, feat_t = agent.sample_feats(buffer, n=feat_num)
+    feats_s, feats_t = agent.sample_feats(buffer, n=feat_num)
     print("Begin fitting")
-    tsne = TSNE(n_components=2, random_state=0)
-    feats_reduction = tsne.fit_transform(np.concatenate((feat_s, feat_t), axis=0))
-    plt.scatter(feats_reduction[:feat_num, 0], feats_reduction[:feat_num, 1], c='r')
-    plt.scatter(feats_reduction[feat_num:, 0], feats_reduction[feat_num:, 1], c='b')
-    plt.savefig(save_path)
+    # tsne = TSNE(n_components=2, random_state=0)
+    # feats_reduction = tsne.fit_transform(np.concatenate((feat_s, feat_t), axis=0))
+    # plt.scatter(feats_reduction[:feat_num, 0], feats_reduction[:feat_num, 1], c='r')
+    # plt.scatter(feats_reduction[feat_num:, 0], feats_reduction[feat_num:, 1], c='b')
+    # plt.savefig(save_path)
+    for i in range(len(feats_t)):
+        tsne = TSNE(n_components=2, random_state=0)
+        feats_reduction = tsne.fit_transform(np.concatenate((feats_s[i], feats_t[i]), axis=0))
+        plt.scatter(feats_reduction[:feat_num, 0], feats_reduction[:feat_num, 1], c='r')
+        plt.scatter(feats_reduction[feat_num:, 0], feats_reduction[feat_num:, 1], c='b')
+        plt.savefig(save_path.replace(".png", f"_{i}.png"))
 
 
 def train(args):
@@ -68,7 +74,6 @@ def train(args):
     utils.set_seed_everywhere(algo_config.seed)
 
     # Initialize environments
-    gym.logger.set_level(40)
     # env = make_env(
     #     domain_name=env_config.domain_name,
     #     task_name=env_config.task_name,
@@ -79,23 +84,35 @@ def train(args):
     #     frame_stack=env_config.frame_stack,
     #     mode="train",
     # )
-    env = make_env(
-        domain_name=env_config.domain_name,
-        task_name=env_config.task_name,
-        seed=algo_config.seed,
-        episode_length=env_config.episode_length,
-        action_repeat=env_config.action_repeat,
-        image_size=env_config.image_size,
-        frame_stack=env_config.frame_stack,
-        # mode="train",
-        mode="distracting_cs",
-        intensity=env_config.distracting_cs_intensity,
-    )
+    if env_config.category == 'dmc':
+        env = make_env(
+            category=env_config.category,
+            domain_name=env_config.domain_name,
+            task_name=env_config.task_name,
+            seed=algo_config.seed,
+            episode_length=env_config.episode_length,
+            action_repeat=env_config.action_repeat,
+            image_size=env_config.image_size,
+            frame_stack=env_config.frame_stack,
+            # mode="train",
+            mode="distracting_cs",
+            intensity=env_config.distracting_cs_intensity,
+        )
+    elif env_config.category == 'maniskill':
+        env = make_env(
+            category=env_config.category,
+            env_id=env_config.env_id,
+            frame_stack=env_config.frame_stack,
+            control_mode=env_config.control_mode,
+            renderer_kwargs=env_config.renderer_kwargs,
+        )
 
     # Create working directory
+    if env_config.category == 'dmc':
+        env_config.env_id = env_config.domain_name + "_" + env_config.task_name
     work_dir = os.path.join(
         algo_config.log_dir,
-        env_config.domain_name + "_" + env_config.task_name,
+        env_config.env_id,
         args.algorithm,
         str(algo_config.seed),
         str(datetime.now()),
@@ -118,7 +135,7 @@ def train(args):
     contrastive_buffer_baseline = utils.ContrastBuffer.load(expert_config.buffer_path, algo_config)
     contrastive_buffer_agent = utils.ContrastBuffer.load(expert_config.buffer_path, algo_config)
     cropped_visual_obs_shape = (
-        3 * env_config.frame_stack,
+        env.observation_space['visual'].shape[0],
         algo_config.image_crop_size,
         algo_config.image_crop_size,
     )
@@ -153,12 +170,13 @@ def train(args):
     # train features
     print("===============Training baseline features===============")
     L = Logger(work_dir, use_wandb=algo_config.use_wandb)
+    baseline_crd_loss = 0
     for step in range(algo_config.baseline_feat_steps + 1):
         if step <= 100 and step % 10 == 0:
             print("Saving features")
             feature_show(baseline, contrastive_buffer_baseline, algo_config.feat_num, os.path.join(feature_dir, f"baseline_{step}.png"))
 
-        baseline.update_crd_baseline(contrastive_buffer_baseline, L, step)
+        baseline_crd_loss = baseline.update_crd_baseline(contrastive_buffer_baseline, L, step)
 
         L.dump(step)
 
@@ -178,6 +196,7 @@ def train(args):
         print("===============Training agent features===============")
         L = Logger(work_dir, use_wandb=algo_config.use_wandb)
         start_time = time.time()
+        agent_crd_loss = 0
         for step in range(algo_config.agent_feat_steps + 1):
             L.log("train/pure_crd_feat_duration", time.time() - start_time, step)
             start_time = time.time()
@@ -187,7 +206,7 @@ def train(args):
                 print("Saving features")
                 feature_show(agent, contrastive_buffer_agent, algo_config.feat_num, os.path.join(feature_dir, f"agent_{step}.png"))
 
-            agent.update(contrastive_buffer_agent, L, step)
+            agent_crd_loss = agent.update(contrastive_buffer_agent, L, step)
         # save
         agent.clean_expert()
         torch.save(agent, os.path.join(model_dir, "pure_no_last.pt"))
@@ -196,27 +215,29 @@ def train(args):
     # show features
     print("===============Showing features===============")
     print("Baseline features")
-    feat_baseline_s, feat_baseline_t = baseline.sample_feats(contrastive_buffer_baseline, n=algo_config.feat_num)
-    np.savetxt(os.path.join(feature_dir, "baseline_s_example.txt"), feat_baseline_s[:10])
-    np.savetxt(os.path.join(feature_dir, "baseline_t_example.txt"), feat_baseline_t[:10])
-    print("Begin fitting")
-    tsne = TSNE(n_components=2, random_state=0)
-    feats_reduction = tsne.fit_transform(np.concatenate((feat_baseline_s, feat_baseline_t), axis=0))
-    plt.scatter(feats_reduction[:algo_config.feat_num, 0], feats_reduction[:algo_config.feat_num, 1], c='r')
-    plt.scatter(feats_reduction[algo_config.feat_num:, 0], feats_reduction[algo_config.feat_num:, 1], c='b')
-    plt.savefig(os.path.join(work_dir, "baseline_feats.png"))
+    # feat_baseline_s, feat_baseline_t = baseline.sample_feats(contrastive_buffer_baseline, n=algo_config.feat_num)
+    # np.savetxt(os.path.join(feature_dir, "baseline_s_example.txt"), feat_baseline_s[:10])
+    # np.savetxt(os.path.join(feature_dir, "baseline_t_example.txt"), feat_baseline_t[:10])
+    # print("Begin fitting")
+    # tsne = TSNE(n_components=2, random_state=0)
+    # feats_reduction = tsne.fit_transform(np.concatenate((feat_baseline_s, feat_baseline_t), axis=0))
+    # plt.scatter(feats_reduction[:algo_config.feat_num, 0], feats_reduction[:algo_config.feat_num, 1], c='r')
+    # plt.scatter(feats_reduction[algo_config.feat_num:, 0], feats_reduction[algo_config.feat_num:, 1], c='b')
+    # plt.savefig(os.path.join(work_dir, "baseline_feats.png"))
+    feature_show(baseline, contrastive_buffer_baseline, algo_config.feat_num, os.path.join(feature_dir, f"baseline.png"))
     print("Baseline features done")
 
     print("Agent features")
-    feat_agent_s, feat_agent_t = agent.sample_feats(contrastive_buffer_agent, n=algo_config.feat_num)
-    np.savetxt(os.path.join(feature_dir, "agent_s_example.txt"), feat_agent_s[:10])
-    np.savetxt(os.path.join(feature_dir, "agent_t_example.txt"), feat_agent_t[:10])
-    print("Begin fitting")
-    tsne = TSNE(n_components=2, random_state=0)
-    feats_reduction = tsne.fit_transform(np.concatenate((feat_agent_s, feat_agent_t), axis=0))
-    plt.scatter(feats_reduction[:algo_config.feat_num, 0], feats_reduction[:algo_config.feat_num, 1], c='r')
-    plt.scatter(feats_reduction[algo_config.feat_num:, 0], feats_reduction[algo_config.feat_num:, 1], c='b')
-    plt.savefig(os.path.join(work_dir, "agent_feats.png"))
+    # feat_agent_s, feat_agent_t = agent.sample_feats(contrastive_buffer_agent, n=algo_config.feat_num)
+    # np.savetxt(os.path.join(feature_dir, "agent_s_example.txt"), feat_agent_s[:10])
+    # np.savetxt(os.path.join(feature_dir, "agent_t_example.txt"), feat_agent_t[:10])
+    # print("Begin fitting")
+    # tsne = TSNE(n_components=2, random_state=0)
+    # feats_reduction = tsne.fit_transform(np.concatenate((feat_agent_s, feat_agent_t), axis=0))
+    # plt.scatter(feats_reduction[:algo_config.feat_num, 0], feats_reduction[:algo_config.feat_num, 1], c='r')
+    # plt.scatter(feats_reduction[algo_config.feat_num:, 0], feats_reduction[algo_config.feat_num:, 1], c='b')
+    # plt.savefig(os.path.join(work_dir, "agent_feats.png"))
+    feature_show(agent, contrastive_buffer_agent, algo_config.feat_num, os.path.join(feature_dir, f"agent.png"))
     print("Agent features done")
 
     # agent last layer
@@ -225,6 +246,7 @@ def train(args):
     agent.actor.freeze_feature_layers()
     L = Logger(work_dir, use_wandb=algo_config.use_wandb)
     start_time = time.time()
+    agent_performance = 0
     for step in range(algo_config.agent_last_layer_steps + 1):
         L.log("train/pure_crd_last_duration", time.time() - start_time, step)
         start_time = time.time()
@@ -232,7 +254,7 @@ def train(args):
 
         if step % algo_config.agent_eval_freq == 0:
             print("Evaluating:", work_dir)
-            evaluate(
+            agent_performance = evaluate(
                 env,
                 agent,
                 video,
@@ -255,6 +277,14 @@ def train(args):
         None,
     )
     print("Baseline reward:", baseline_reward)
+
+    # record final result
+    df = pd.DataFrame(columns=['x', 'y', 'crd_ratio', 'agent_score'])
+    x = agent_config.crd_weight[0][0]
+    y = agent_config.crd_weight[1][1]
+    crd_ratio = agent_crd_loss / baseline_crd_loss
+    df.loc[0] = [x, y, crd_ratio, agent_performance]
+    df.to_csv(os.path.join(work_dir, "result.csv"))
 
     # save models
     baseline.clean_expert()

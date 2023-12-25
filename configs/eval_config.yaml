@@ -1,26 +1,12 @@
-# algos: {
-#   'state': ckpts/state_v1.pt,
-#   'bc': ckpts/bc_50k.pt,
-#   'crd_bc': ckpts/crdbc_50k.pt,
-#   'crd_bc_contrast': ckpts/crdbc_contrast_50k.pt,
-# } # all of the models are 200000 steps training
-
-# algos: {
-#   'bc_contrast': ckpts/bc_contrast_50k.pt,
-#   'bc_aug': ckpts/bc_highaug_50k.pt,
-#   'crd_bc_aug': ckpts/crdbc_highaug_50k.pt,
-# } # all of the models are 200000 steps training
-
-algos: {
-  'bc_aug_contrast': ckpts/bc_aug_contrast_50k.pt,
-  'crd_aug_contrast': ckpts/crdbc_aug_contrast_50k.pt,
-} # all of the models are 200000 steps training
+algos: {'bc': 'ckpts/bc_v2.pt', '0.4_0.0': 'ckpts/distribute_v2/pure_crd_0.4_0.0.pt', '0.0_0.0': 'ckpts/distribute_v2/pure_crd_0.0_0.0.pt', '0.2_0.6': 'ckpts/distribute_v2/pure_crd_0.2_0.6.pt', '0.0_0.2': 'ckpts/distribute_v2/pure_crd_0.0_0.2.pt', '0.4_0.4': 'ckpts/distribute_v2/pure_crd_0.4_0.4.pt', '0.0_0.6': 'ckpts/distribute_v2/pure_crd_0.0_0.6.pt', '0.8_0.0': 'ckpts/distribute_v2/pure_crd_0.8_0.0.pt', '0.6_0.2': 'ckpts/distribute_v2/pure_crd_0.6_0.2.pt', '0.6_0.0': 'ckpts/distribute_v2/pure_crd_0.6_0.0.pt', '0.4_0.2': 'ckpts/distribute_v2/pure_crd_0.4_0.2.pt', '0.2_0.0': 'ckpts/distribute_v2/pure_crd_0.2_0.0.pt', '0.2_0.4': 'ckpts/distribute_v2/pure_crd_0.2_0.4.pt', '0.2_0.8': 'ckpts/distribute_v2/pure_crd_0.2_0.8.pt', '0.0_1.0': 'ckpts/distribute_v2/pure_crd_0.0_1.0.pt', '0.2_0.2': 'ckpts/distribute_v2/pure_crd_0.2_0.2.pt', '0.6_0.4': 'ckpts/distribute_v2/pure_crd_0.6_0.4.pt', '0.4_0.6': 'ckpts/distribute_v2/pure_crd_0.4_0.6.pt', '0.8_0.2': 'ckpts/distribute_v2/pure_crd_0.8_0.2.pt', '0.0_0.4': 'ckpts/distribute_v2/pure_crd_0.0_0.4.pt', '0.0_0.8': 'ckpts/distribute_v2/pure_crd_0.0_0.8.pt'}
 
 intensities: [0.1, 0.2, 0.3]
 save_video: true
 eval_episodes: 30
+log_dir: logs
 
 env:
+  category: dmc
   domain_name: finger
   task_name: spin
   frame_stack: 3

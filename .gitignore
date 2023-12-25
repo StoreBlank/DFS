@@ -130,3 +130,7 @@ configs/config.cfg
 *.pkl
 crd/
 1.sh
+test.py
+configs/test.yaml
+distribute.py
+experiment_records/

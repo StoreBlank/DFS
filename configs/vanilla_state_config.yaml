@@ -1,14 +1,23 @@
 algorithm: vanilla_state_sac
 
+# env:
+#   category: dmc
+#   domain_name: finger
+#   task_name: spin
+#   frame_stack: 3
+#   action_repeat: 4
+#   image_size: 100
+#   episode_length: 1000
+#   eval_mode: null
+#   distracting_cs_intensity: 0
+
 env:
-  domain_name: finger
-  task_name: spin
+  category: maniskill
+  env_id: PickCube-v0
   frame_stack: 3
-  action_repeat: 4
-  image_size: 100
-  episode_length: 1000
-  eval_mode: null
-  distracting_cs_intensity: 0.1
+  control_mode: pd_joint_delta_pos
+  render_mode: human
+  renderer_kwargs: {'offscreen_only': True}
 
 agent:
   name: state_sac
@@ -33,9 +42,9 @@ algo:
   batch_size: 128
   save_freq: 100000
   eval_freq: 10000
-  eval_episodes: 30
+  eval_episodes: 1
   crop: false
   image_crop_size: 100
   log_dir: logs
-  save_video: true
-  use_wandb: true #
+  save_video: false
+  use_wandb: false #
