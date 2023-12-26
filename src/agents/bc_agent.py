@@ -138,8 +138,12 @@ class FeatBaselineBC(BC):
         self.expert = expert
         self.expert.freeze()
 
-    def clean_expert(self):
+    def release(self):
+        """
+        release mode, get rid of expert and crd criterion, for store
+        """
         self.expert = None
+        self.criterion = None
 
     def update_crd_baseline(self, replay_buffer, L, step):
         if self.use_aug:
@@ -159,7 +163,7 @@ class FeatBaselineBC(BC):
         # debug
         # if step == 500:
         #     set_trace()
-        loss_crd, losses_crd = self.criterion(feats_s, feats_t, idxs, replay_buffer)
+        loss_crd, losses_crd = self.criterion(feats_s, feats_t, idxs)
 
         if L is not None:
             L.log('train_baseline/crd_loss', loss_crd, step)
@@ -235,10 +239,14 @@ class CrdBC(BC):
         self.expert = expert
         self.expert.freeze()
 
-    def clean_expert(self):
+    def release(self):
+        """
+        release mode, get rid of expert and crd criterion, for store
+        """
         self.expert = None
+        self.criterion = None
 
-    def update_actor(self, obs, idxs, contrastive_buffer, L=None, step=None):
+    def update_actor(self, obs, idxs, L=None, step=None):
         if self.visual_contrastive_task:
             obs_visual_auged = obs[1]
             obs = obs[0]
@@ -256,7 +264,7 @@ class CrdBC(BC):
         #     torch.atanh(mu_pred), log_std_pred, torch.atanh(mu_target), log_std_target
         # ).mean()
         loss_kl = (mu_pred - mu_target).pow(2).mean() + (log_std_pred - log_std_target).pow(2).mean()
-        loss_crd = self.criterion(feat_s, feat_t, idxs, contrastive_buffer)
+        loss_crd = self.criterion(feat_s, feat_t, idxs)
         loss = loss_kl + self.lambda_crd * loss_crd
 
         if self.visual_contrastive_task:
@@ -281,12 +289,12 @@ class CrdBC(BC):
             if self.use_aug == "weak":
                 obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_aug_sample(return_idxs=True)
             elif self.use_aug == "strong":
-                print("strong aug")
+                # print("strong aug")
                 obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_costom_aug_sample(utils.add_random_color_patch, utils.gaussian, utils.random_conv, utils.random_crop, utils.random_affine, return_idxs=True)
             else:
                 raise NotImplementedError("use_aug in config can be None or 'weak' or 'strong' ")
         else:
-            print("no_aug")
+            # print("no_aug")
             obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_sample(return_idxs=True)
         
         if self.visual_contrastive_task:
@@ -298,7 +306,7 @@ class CrdBC(BC):
             obs_visual_contrastive = utils.random_affine(obs_visual_contrastive)
             obs=[obs, obs_visual_contrastive]
 
-        self.update_actor(obs, idxs, replay_buffer, L, step)
+        self.update_actor(obs, idxs, L, step)
 
 
 class PureCrdBC(BC):
@@ -338,8 +346,12 @@ class PureCrdBC(BC):
         self.expert = expert
         self.expert.freeze()
 
-    def clean_expert(self):
+    def release(self):
+        """
+        release mode, get rid of expert and crd criterion, for store
+        """
         self.expert = None
+        self.criterion = None
 
     def update(self, replay_buffer, L, step):
         if self.use_aug:
@@ -356,7 +368,7 @@ class PureCrdBC(BC):
             _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, True)
             # feat_t = feats_t[-1]
 
-        loss, losses = self.criterion(feats_s, feats_t, idxs, replay_buffer)
+        loss, losses = self.criterion(feats_s, feats_t, idxs)
 
         if L is not None:
             L.log('train/pure_crd_crd_loss', loss, step)

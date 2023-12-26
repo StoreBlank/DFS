@@ -208,7 +208,7 @@ def train(args):
 
             agent_crd_loss = agent.update(contrastive_buffer_agent, L, step)
         # save
-        agent.clean_expert()
+        agent.release()
         torch.save(agent, os.path.join(model_dir, "pure_no_last.pt"))
         agent.set_expert(teacher)
 
@@ -287,9 +287,9 @@ def train(args):
     df.to_csv(os.path.join(work_dir, "result.csv"))
 
     # save models
-    baseline.clean_expert()
+    baseline.release()
     torch.save(baseline, os.path.join(model_dir, "baseline.pt"))
-    agent.clean_expert()
+    agent.release()
     torch.save(agent, os.path.join(model_dir, "pure_crd.pt"))
 
     print("Done!")
