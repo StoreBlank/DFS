@@ -632,9 +632,9 @@ class CRDLoss(nn.Module):
         out_s = torch.exp(out_s / self.T)
         
         if self.Z_v1[s_layer] < 0:
-            self.Z_v1[s_layer] = out_s.mean().detach().cpu().numpy() * self.capacity
+            self.Z_v1[s_layer] = out_s.mean().detach().cpu().numpy() * self.memory.capacity
         if self.Z_v2[t_layer] < 0:
-            self.Z_v2[t_layer] = out_t.mean().detach().cpu().numpy() * self.capacity
+            self.Z_v2[t_layer] = out_t.mean().detach().cpu().numpy() * self.memory.capacity
 
         out_s = (out_s / self.Z_v1[s_layer]).contiguous()
         out_t = (out_t / self.Z_v2[t_layer]).contiguous()
@@ -690,3 +690,143 @@ class HalfProjContrastMemory(nn.Module):
         self.K = K
 
         self.register_buffer('memory', torch.rand(t_layers, capacity, feature_dim))
+
+    def prefill(self, teacher, buffer):
+        print("Prefilling contrastive memory ...")
+        with torch.no_grad():
+            max_batch = buffer.capacity // buffer.batch_size
+            for i in range(max_batch - 1):
+                idxs = list(range(i * buffer.batch_size, min((i + 1) * buffer.batch_size, buffer.capacity)))
+                obses, _  = buffer._encode_obses(idxs)
+                obs = {
+                    "state": torch.as_tensor(obses["state"]).cuda().float(),
+                    "visual": torch.as_tensor(obses["visual"]).cuda().float(),
+                }
+                _, _, _, _, feats_t = teacher.actor(obs['state'], False, False, True, True)
+                feats_t = torch.stack(feats_t)
+                self.memory[:, idxs, :] = feats_t
+        print("Contrastive memory pre-filled!")
+
+    def _get(
+            self,
+            t_layer,
+            idx,
+            contrast_idx=None
+        ):
+        """
+        only get negative sample
+        Return:
+            weight: (B, K + 1, f_dim)
+        """
+        if contrast_idx is None:
+            contrast_idx = np.random.randint(self.capacity, size=(len(idx), self.K))
+        idx = np.concatenate([idx[:, None], contrast_idx], 1)
+
+        weight = self.memory[t_layer][idx].clone()
+
+        return weight
+    
+    def forward(
+            self,
+            t_layer,
+            idx,
+            contrast_idx=None
+        ):
+        return self._get(t_layer, idx, contrast_idx)
+
+
+def l1_dist(f_s, weight_t):
+    """
+    l1 distance
+    Args:
+        f_s: (B, f_dim)
+        weight_t: (B, K + 1, f_dim)
+    Return:
+        dist: (B, K + 1)
+    """
+    return torch.cdist(f_s.unsqueeze(1), weight_t, p=1).squeeze(1)
+
+def l2_dist(f_s, weight_t):
+    """
+    l2 distance
+    Args:
+        f_s: (B, f_dim)
+        weight_t: (B, K + 1, f_dim)
+    Return:
+        dist: (B, K + 1)
+    """
+    return torch.cdist(f_s.unsqueeze(1), weight_t, p=2).squeeze(1)
+
+
+class HalfProjCRDLoss(nn.Module):
+    def __init__(self, opt):
+        super().__init__()
+        self.embeds_s = []
+        for s_dim in opt.s_dims:
+            self.embeds_s.append(nn.Sequential(
+                nn.Flatten(),
+                nn.Linear(s_dim, opt.feat_dim),
+            ))
+        self.embeds_s = nn.ModuleList(self.embeds_s)
+        self.crd_weight = opt.crd_weight
+        self.residual = opt.nce_k / opt.n_data
+        self.T = opt.T
+        self.memory = HalfProjContrastMemory(
+            opt.n_data,
+            opt.feat_dim,
+            len(opt.t_dims),
+            opt.nce_k,
+            opt.T
+        )
+        self.Z = -np.ones(len(opt.t_dims))
+        self.apply(weight_init)
+
+    def contrast(self, f_s, f_t, s_layer, t_layer, idx, contrast_idx=None):
+        """
+        Single layer contrast loss
+        """
+        f_s = self.embeds_s[s_layer](f_s)
+
+        weight_t = self.memory(t_layer, idx, contrast_idx)
+
+        out = l2_dist(f_s, weight_t)
+        out = torch.exp(-out / self.T)
+        
+        if self.Z[t_layer] < 0:
+            self.Z[t_layer] = out.mean().detach().cpu().numpy() * self.memory.capacity
+
+        out = (out / self.Z[t_layer]).contiguous()
+
+        loss = contrast_loss(out, self.residual)
+
+        return loss
+    
+    def forward(self, fs_s, fs_t, idx, contrast_idx=None):
+        """
+        Args:
+            fs_s: the features of student network, a list, each element size [batch_size, s_dim]
+            fs_t: the features of teacher network, a list, each element size [batch_size, t_dim]
+            idx: the indices of these positive samples in the dataset, size [batch_size]
+            contrast_idx: the indices of negative samples, size [batch_size, nce_k]
+
+        Returns:
+            The contrastive loss
+        """
+        # f_s = self.embed_s(f_s)
+        # f_t = self.embed_t(f_t)
+        # f_s = F.normalize(f_s, dim=1)
+        # f_t = F.normalize(f_t, dim=1)
+        # out_s, out_t = buffer.contrast(f_s, f_t, idx, contrast_idx) # take out contrast pair
+        loss = 0
+        # for logging
+        losses = np.zeros((len(fs_s), len(fs_t)))
+        for i in range(len(fs_s)):
+            for j in range(len(fs_t)):
+                if self.crd_weight[i][j] != 0:
+                    layer_loss = self.contrast(fs_s[i], fs_t[j], i, j, idx, contrast_idx) # take out contrast pair
+                    loss += self.crd_weight[i][j] * layer_loss
+                    losses[i][j] = layer_loss.detach().cpu().numpy()
+        # s_loss = contrast_loss(out_s, self.residual)
+        # t_loss = contrast_loss(out_t, self.residual)
+        # loss = s_loss + t_loss
+        return loss, losses

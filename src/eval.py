@@ -69,7 +69,7 @@ def main(cfg):
                 frame_stack=env_config.frame_stack,
                 # mode="train",
                 mode="distracting_cs",
-                intensity=env_config.distracting_cs_intensity,
+                intensity=intensity,
             )
         elif env_config.category == 'maniskill':
             env = make_env(

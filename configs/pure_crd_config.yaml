@@ -2,6 +2,7 @@ algorithm: pure_crd
 
 env:
   category: dmc
+  env_id: finger_spin
   domain_name: finger
   task_name: spin
   frame_stack: 3

@@ -145,6 +145,9 @@ class FeatBaselineBC(BC):
         self.expert = None
         self.criterion = None
 
+    def prefill_memory(self, replay_buffer):
+        self.criterion.memory.prefill(self.expert, replay_buffer)
+
     def update_crd_baseline(self, replay_buffer, L, step):
         if self.use_aug:
             obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_aug_sample(return_idxs=True)
@@ -246,6 +249,9 @@ class CrdBC(BC):
         self.expert = None
         self.criterion = None
 
+    def prefill_memory(self, replay_buffer):
+        self.criterion.memory.prefill(self.expert, replay_buffer)
+
     def update_actor(self, obs, idxs, L=None, step=None):
         if self.visual_contrastive_task:
             obs_visual_auged = obs[1]
@@ -255,16 +261,16 @@ class CrdBC(BC):
         obs_state = obs['state']
 
         mu_pred, _, _, log_std_pred, feats_s = self.actor(obs_visual, False, False, False, True, True)
-        feat_s = feats_s[-1]
+        # feat_s = feats_s[-1]
         with torch.no_grad():
             mu_target, _, _, log_std_target, feats_t = self.expert.actor(obs_state, False, False, True, True)
-            feat_t = feats_t[-1]
+            # feat_t = feats_t[-1]
 
         # loss_kl = kl_divergence(
         #     torch.atanh(mu_pred), log_std_pred, torch.atanh(mu_target), log_std_target
         # ).mean()
         loss_kl = (mu_pred - mu_target).pow(2).mean() + (log_std_pred - log_std_target).pow(2).mean()
-        loss_crd = self.criterion(feat_s, feat_t, idxs)
+        loss_crd, _ = self.criterion(feats_s, feats_t, idxs)
         loss = loss_kl + self.lambda_crd * loss_crd
 
         if self.visual_contrastive_task:
@@ -352,6 +358,9 @@ class PureCrdBC(BC):
         """
         self.expert = None
         self.criterion = None
+
+    def prefill_memory(self, replay_buffer):
+        self.criterion.memory.prefill(self.expert, replay_buffer)
 
     def update(self, replay_buffer, L, step):
         if self.use_aug:

@@ -5,6 +5,7 @@ import gym.spaces as spaces
 import numpy as np
 import torch
 from einops import rearrange
+import mani_skill2.envs
 from mani_skill2.utils.common import flatten_dict_space_keys, flatten_state_dict
 from ipdb import set_trace
 

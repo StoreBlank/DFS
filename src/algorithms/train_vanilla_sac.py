@@ -8,6 +8,7 @@ from agents.sac_agent import StateSAC, VisualSAC, NoisyStateSAC
 from logger import Logger
 from datetime import datetime
 from video import VideoRecorder
+from ipdb import set_trace
 
 
 def evaluate(env, agent, video, num_episodes, L, step, test_env=False):

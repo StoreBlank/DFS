@@ -63,8 +63,8 @@ def train(args):
             action_repeat=env_config.action_repeat,
             image_size=env_config.image_size,
             frame_stack=env_config.frame_stack,
-            # mode="train",
-            mode="distracting_cs",
+            mode="train",
+            # mode="distracting_cs",
             intensity=env_config.distracting_cs_intensity,
         )
         test_env = (

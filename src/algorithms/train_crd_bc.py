@@ -74,8 +74,8 @@ def train(args):
             action_repeat=env_config.action_repeat,
             image_size=env_config.image_size,
             frame_stack=env_config.frame_stack,
-            # mode="train",
-            mode="distracting_cs",
+            mode="train",
+            # mode="distracting_cs",
             intensity=env_config.distracting_cs_intensity,
         )
         test_env = (
@@ -129,7 +129,7 @@ def train(args):
 
     # Prepare agent
     assert torch.cuda.is_available(), "must have cuda enabled"
-    contrastive_buffer = utils.ContrastBuffer.load(expert_config.buffer_path, algo_config)
+    replay_buffer = utils.ReplayBuffer.load(expert_config.buffer_path)
     # teacher
     teacher = torch.load(expert_config.model_path)
     teacher.eval()
@@ -145,6 +145,7 @@ def train(args):
         agent_config=agent_config,
     )
     agent.set_expert(teacher)
+    # agent.prefill_memory(replay_buffer)
 
     # train
     print("Training student")
@@ -185,6 +186,6 @@ def train(args):
             torch.save(agent, os.path.join(model_dir, f"{step}.pt"))
 
         # Run training update
-        agent.update(contrastive_buffer, L, step)
+        agent.update(replay_buffer, L, step)
 
     print("Completed training for", work_dir)
