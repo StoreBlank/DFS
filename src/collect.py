@@ -1,7 +1,6 @@
 import os
 import hydra
 import torch
-import gym
 from env.wrappers import make_env
 import utils
 from utils import collect_buffer
@@ -23,24 +22,35 @@ def main(args):
     utils.set_seed_everywhere(algo_config.seed)
 
     # Initialize environments
-    gym.logger.set_level(40)
-    env = make_env(
-        domain_name=env_config.domain_name,
-        task_name=env_config.task_name,
-        seed=algo_config.seed,
-        episode_length=env_config.episode_length,
-        action_repeat=env_config.action_repeat,
-        image_size=env_config.image_size,
-        frame_stack=env_config.frame_stack,
-        # mode="train",
-        mode="distracting_cs",
-        intensity=env_config.distracting_cs_intensity,
-    )
+    if env_config.category == 'dmc':
+        env = make_env(
+            category=env_config.category,
+            domain_name=env_config.domain_name,
+            task_name=env_config.task_name,
+            seed=algo_config.seed,
+            episode_length=env_config.episode_length,
+            action_repeat=env_config.action_repeat,
+            image_size=env_config.image_size,
+            frame_stack=env_config.frame_stack,
+            # mode="train",
+            mode="distracting_cs",
+            intensity=env_config.distracting_cs_intensity,
+        )
+    elif env_config.category == 'maniskill':
+        env = make_env(
+            category=env_config.category,
+            env_id=env_config.env_id,
+            frame_stack=env_config.frame_stack,
+            control_mode=env_config.control_mode,
+            renderer_kwargs=env_config.renderer_kwargs,
+        )
 
     # Create working directory
+    if env_config.category == 'dmc':
+        env_config.env_id = env_config.domain_name + "_" + env_config.task_name
     work_dir = os.path.join(
         algo_config.log_dir,
-        env_config.domain_name + "_" + env_config.task_name,
+        env_config.env_id,
         args.algorithm,
         str(algo_config.seed),
         str(datetime.now()),

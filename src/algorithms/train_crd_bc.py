@@ -1,7 +1,6 @@
 import torch
 import os
 import numpy as np
-import gym
 import utils
 import time
 from env.wrappers import make_env
@@ -55,7 +54,6 @@ def train(args):
     utils.set_seed_everywhere(algo_config.seed)
 
     # Initialize environments
-    gym.logger.set_level(40)
     # env = make_env(
     #     domain_name=env_config.domain_name,
     #     task_name=env_config.task_name,
@@ -66,38 +64,53 @@ def train(args):
     #     frame_stack=env_config.frame_stack,
     #     mode="train",
     # )
-    env = make_env(
-        domain_name=env_config.domain_name,
-        task_name=env_config.task_name,
-        seed=algo_config.seed,
-        episode_length=env_config.episode_length,
-        action_repeat=env_config.action_repeat,
-        image_size=env_config.image_size,
-        frame_stack=env_config.frame_stack,
-        # mode="train",
-        mode="distracting_cs",
-        intensity=env_config.distracting_cs_intensity,
-    )
-    test_env = (
-        None
-        if env_config.eval_mode is None
-        else make_env(
+    if env_config.category == 'dmc':
+        env = make_env(
+            category=env_config.category,
             domain_name=env_config.domain_name,
             task_name=env_config.task_name,
-            seed=algo_config.seed + 42,
+            seed=algo_config.seed,
             episode_length=env_config.episode_length,
             action_repeat=env_config.action_repeat,
             image_size=env_config.image_size,
             frame_stack=env_config.frame_stack,
-            mode=env_config.eval_mode,
+            mode="train",
+            # mode="distracting_cs",
             intensity=env_config.distracting_cs_intensity,
         )
-    )
+        test_env = (
+            None
+            if env_config.eval_mode is None
+            else make_env(
+                category=env_config.category,
+                domain_name=env_config.domain_name,
+                task_name=env_config.task_name,
+                seed=algo_config.seed + 42,
+                episode_length=env_config.episode_length,
+                action_repeat=env_config.action_repeat,
+                image_size=env_config.image_size,
+                frame_stack=env_config.frame_stack,
+                mode=env_config.eval_mode,
+                intensity=env_config.distracting_cs_intensity,
+            )
+        )
+    elif env_config.category == 'maniskill':
+        env = make_env(
+            category=env_config.category,
+            env_id=env_config.env_id,
+            frame_stack=env_config.frame_stack,
+            control_mode=env_config.control_mode,
+            renderer_kwargs=env_config.renderer_kwargs,
+        )
+        test_env = None
+
 
     # Create working directory
+    if env_config.category == 'dmc':
+        env_config.env_id = env_config.domain_name + "_" + env_config.task_name
     work_dir = os.path.join(
         algo_config.log_dir,
-        env_config.domain_name + "_" + env_config.task_name,
+        env_config.env_id,
         args.algorithm,
         str(algo_config.seed),
         str(datetime.now()),
@@ -116,13 +129,13 @@ def train(args):
 
     # Prepare agent
     assert torch.cuda.is_available(), "must have cuda enabled"
-    contrastive_buffer = utils.ContrastBuffer.load(expert_config.buffer_path, algo_config)
+    replay_buffer = utils.ReplayBuffer.load(expert_config.buffer_path)
     # teacher
     teacher = torch.load(expert_config.model_path)
     teacher.eval()
     # student
     cropped_visual_obs_shape = (
-        3 * env_config.frame_stack,
+        env.observation_space['visual'].shape[0],
         algo_config.image_crop_size,
         algo_config.image_crop_size,
     )
@@ -132,6 +145,7 @@ def train(args):
         agent_config=agent_config,
     )
     agent.set_expert(teacher)
+    # agent.prefill_memory(replay_buffer)
 
     # train
     print("Training student")
@@ -172,6 +186,6 @@ def train(args):
             torch.save(agent, os.path.join(model_dir, f"{step}.pt"))
 
         # Run training update
-        agent.update(contrastive_buffer, L, step)
+        agent.update(replay_buffer, L, step)
 
     print("Completed training for", work_dir)

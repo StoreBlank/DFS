@@ -3,6 +3,7 @@ import json
 import os
 import torch
 from termcolor import colored
+import numpy as np
 import wandb
 
 FORMAT_CONFIG = {
@@ -42,6 +43,7 @@ class MetersGroup(object):
 
     def _prime_meters(self):
         data = dict()
+        data_for_wandb = dict()
         for key, meter in self._meters.items():
             if key.startswith('train'):
                 key = key[len('train') + 1:]
@@ -49,7 +51,12 @@ class MetersGroup(object):
                 key = key[len('eval') + 1:]
             key = key.replace('/', '_')
             data[key] = meter.value()
-        return data
+            data_for_wandb[key] = meter.value()
+            # convert numpy array
+            if isinstance(data[key], np.ndarray):
+                data[key] = data[key].tolist()
+                data_for_wandb[key] = wandb.Image(data_for_wandb[key] / data_for_wandb[key].max())
+        return data, data_for_wandb
 
     def _dump_to_file(self, data):
         with open(self._file_name, 'a') as f:
@@ -78,9 +85,9 @@ class MetersGroup(object):
     def dump(self, step, prefix, use_wandb=False):
         if len(self._meters) == 0:
             return
-        data = self._prime_meters()
+        data, data_for_wandb = self._prime_meters()
         if use_wandb:
-            wandb.log({f'{prefix}': data}, step=step)
+            wandb.log({f'{prefix}': data_for_wandb}, step=step)
         data['step'] = step
         self._dump_to_file(data)
         self._dump_to_console(data, prefix)

@@ -1,14 +1,14 @@
 import torch
 import os
 import numpy as np
-import gym
 import utils
 import time
 from env.wrappers import make_env
-from agents.sac_agent import StateSAC, VisualSAC
+from agents.sac_agent import StateSAC, VisualSAC, NoisyStateSAC
 from logger import Logger
 from datetime import datetime
 from video import VideoRecorder
+from ipdb import set_trace
 
 
 def evaluate(env, agent, video, num_episodes, L, step, test_env=False):
@@ -45,39 +45,52 @@ def train(args):
     utils.set_seed_everywhere(algo_config.seed)
 
     # Initialize environments
-    gym.logger.set_level(40)
-    env = make_env(
-        domain_name=env_config.domain_name,
-        task_name=env_config.task_name,
-        seed=algo_config.seed,
-        episode_length=env_config.episode_length,
-        action_repeat=env_config.action_repeat,
-        image_size=env_config.image_size,
-        frame_stack=env_config.frame_stack,
-        # mode="train",
-        mode="distracting_cs",
-        intensity=env_config.distracting_cs_intensity,
-    )
-    test_env = (
-        None
-        if env_config.eval_mode is None
-        else make_env(
+    if env_config.category == 'dmc':
+        env = make_env(
+            category=env_config.category,
             domain_name=env_config.domain_name,
             task_name=env_config.task_name,
-            seed=algo_config.seed + 42,
+            seed=algo_config.seed,
             episode_length=env_config.episode_length,
             action_repeat=env_config.action_repeat,
             image_size=env_config.image_size,
             frame_stack=env_config.frame_stack,
-            mode=env_config.eval_mode,
+            # mode="train",
+            mode="distracting_cs",
             intensity=env_config.distracting_cs_intensity,
         )
-    )
+        test_env = (
+            None
+            if env_config.eval_mode is None
+            else make_env(
+                category=env_config.category,
+                domain_name=env_config.domain_name,
+                task_name=env_config.task_name,
+                seed=algo_config.seed + 42,
+                episode_length=env_config.episode_length,
+                action_repeat=env_config.action_repeat,
+                image_size=env_config.image_size,
+                frame_stack=env_config.frame_stack,
+                mode=env_config.eval_mode,
+                intensity=env_config.distracting_cs_intensity,
+            )
+        )
+    elif env_config.category == 'maniskill':
+        env = make_env(
+            category=env_config.category,
+            env_id=env_config.env_id,
+            frame_stack=env_config.frame_stack,
+            control_mode=env_config.control_mode,
+            renderer_kwargs=env_config.renderer_kwargs,
+        )
+        test_env = None
 
     # Create working directory
+    if env_config.category == 'dmc':
+        env_config.env_id = env_config.domain_name + "_" + env_config.task_name
     work_dir = os.path.join(
         algo_config.log_dir,
-        env_config.domain_name + "_" + env_config.task_name,
+        env_config.env_id,
         args.algorithm,
         str(algo_config.seed),
         str(datetime.now()),
@@ -102,7 +115,7 @@ def train(args):
         batch_size=algo_config.batch_size,
     )
     cropped_visual_obs_shape = (
-        3 * env_config.frame_stack,
+        env.observation_space['visual'].shape[0],
         algo_config.image_crop_size,
         algo_config.image_crop_size,
     )
@@ -110,6 +123,12 @@ def train(args):
     # print("Cropped observations:", cropped_obs_shape)
     if algo_config.mode == "state":
         agent = StateSAC(
+            obs_shape=env.observation_space["state"].shape,
+            action_shape=env.action_space.shape,
+            args=agent_config,
+        )
+    elif algo_config.mode == "noisy_state":
+        agent = NoisyStateSAC(
             obs_shape=env.observation_space["state"].shape,
             action_shape=env.action_space.shape,
             args=agent_config,

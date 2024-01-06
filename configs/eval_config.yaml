@@ -1,26 +1,19 @@
-# algos: {
-#   'state': ckpts/state_v1.pt,
-#   'bc': ckpts/bc_50k.pt,
-#   'crd_bc': ckpts/crdbc_50k.pt,
-#   'crd_bc_contrast': ckpts/crdbc_contrast_50k.pt,
-# } # all of the models are 200000 steps training
-
-# algos: {
-#   'bc_contrast': ckpts/bc_contrast_50k.pt,
-#   'bc_aug': ckpts/bc_highaug_50k.pt,
-#   'crd_bc_aug': ckpts/crdbc_highaug_50k.pt,
-# } # all of the models are 200000 steps training
-
 algos: {
-  'bc_aug_contrast': ckpts/bc_aug_contrast_50k.pt,
-  'crd_aug_contrast': ckpts/crdbc_aug_contrast_50k.pt,
-} # all of the models are 200000 steps training
+  'bc': ckpts/strong_aug/bc.pt,
+  'crd_bc': ckpts/strong_aug/crd_bc.pt,
+  'cross': ckpts/strong_aug/cross.pt,
+  'half_proj': ckpts/strong_aug/half_proj.pt,
+  'half_proj_cross': ckpts/strong_aug/half_proj_cross.pt,
+}
 
-intensities: [0.1, 0.2, 0.3]
+intensities: [0.0, 0.1, 0.2, 0.3]
 save_video: true
 eval_episodes: 30
+log_dir: logs
 
 env:
+  category: dmc
+  env_id: finger_spin
   domain_name: finger
   task_name: spin
   frame_stack: 3
