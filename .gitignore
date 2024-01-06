@@ -130,7 +130,12 @@ configs/config.cfg
 *.pkl
 crd/
 1.sh
+
+visualizer_models/
+output/
+
 test.py
 configs/test.yaml
 distribute.py
 experiment_records/
+
