@@ -140,9 +140,6 @@ distribute.py
 experiment_records/
 
 
-*.pdf
-*.png 
-*.jpg
 StableKeypoints/pretrained/
 *.ckpt 
 
