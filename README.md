@@ -1,28 +1,22 @@
-# DFS: Distillation From State-based Policy
+# Branch for StableKeypoint based segmentation on RL
 
-A project under developing and exploration
+## How to train
+first you collect random buffer (here I used 10000 steps) for StableKeypoint pretrain
 
-## Structure
+then you have the trained model, please refer to ```configs/vanilla_visual_config.yaml``` set ```env.use_mask: true``` and add the session ```mask``` 
 
-**configs**: config yaml files for starting an experiment
+note that you may need to download pretrained SD model from huggingface and change ```ldm_path``` here
 
-**Agent**: An entity that can act or learn in an environment, like a living 
-creature. Parts of the agents (like organ) please put in `module.py`. Now have state-based sac, visual-based sac and vanilla bc agent
+then train RL as usual
 
-**Algorithm**: A blueprint introduces how to train an agent. Now have only vanilla state-based and visual-based sac
+## Note
+now pieg is not usable
 
-**Environment**: Openai gym-styled environments, have methods like `step()`, `reset()` and so on. Now have dm-control and distracting cs (mention that you need to download dm-control pkg: `pip install dm-control`)
+the mask added in env ```wrapper_dmc.py```, which means if you add this module, the observation agent see is a masked observation
 
-**utils.py**: Other reusable tools and components are here, specially `ReplayBuffer` and `ContrastBuffer`
+the keypoint mask class is named ```Keypoint_HardMask``` in utils, and all the related function are in this file. so if you have the trained ckpt of StableKeypoint, then you dont need that folder
 
-## TODO
-
-**Agent**: 
-1. Enable bc agent to update from representation, refer to https://github.com/HobbitLong/RepDistiller, you may first complete `utils.py`. Don't use `AliasMethod` in that repo, just uniformly sample. -- Done!
-
-**Algorithm**:
-1. (Ours) First get a state-based sac, then use DAgger (http://arxiv.org/abs/1011.0686) and contrastive representation distillation (crd) to train a visual-based actor. You can treat it as to use crd_loss + bc_loss in the update step of DAgger. -- distill actor but not critic (which still need state infomation in training)
-
-**Others**:
-1. maniskill2 env
-2. crd in both critic and actor? so that we can continue training on just observation
+## todo:
+- [] integrate pieg
+- [] textual inversion
+- [] adaptation
