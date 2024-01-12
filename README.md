@@ -14,6 +14,13 @@ now pieg is not usable
 
 the mask added in env ```wrapper_dmc.py```, which means if you add this module, the observation agent see is a masked observation
 
+<center>
+<figure>
+<img src="./assets/obs.jpg" />
+<img src="./assets/obs_masked.jpg" />
+</figure>
+</center>
+
 the keypoint mask class is named ```Keypoint_HardMask``` in utils, and all the related function are in this file. so if you have the trained ckpt of StableKeypoint, then you dont need that folder
 
 ## todo:
