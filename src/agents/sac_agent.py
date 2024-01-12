@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from copy import deepcopy
 import utils
 import agents.modules as m
-import ipdb
+from ipdb import set_trace
 
 
 class SAC(object):
@@ -50,6 +50,7 @@ class SAC(object):
         # must rewrite the function in new agent to get obs["state"] or obs["visual"]
         _obs = torch.FloatTensor(obs).cuda()
         _obs = _obs.unsqueeze(0)
+        set_trace()
         return _obs
 
     def select_action(self, obs):
@@ -193,6 +194,7 @@ class VisualSAC(SAC):
             _obs = _obs
         _obs = torch.FloatTensor(_obs).cuda()
         _obs = _obs.unsqueeze(0)
+        # set_trace()
         return _obs
 
     def update_actor_and_alpha(self, obs, L=None, step=None, update_alpha=True):

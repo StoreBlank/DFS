@@ -5,6 +5,7 @@ import dmc2gym
 import numpy as np
 from collections import deque
 
+from ipdb import set_trace
 
 def make_env(
 		domain_name,
@@ -15,7 +16,8 @@ def make_env(
 		action_repeat=4,
 		image_size=100,
 		mode='train',
-		intensity=0.
+		intensity=0.,
+		mask_model = None,
 	):
 	"""Make environment for experiments"""
 	assert mode in {'train', 'distracting_cs'}, \
@@ -43,17 +45,18 @@ def make_env(
 		distracting_cs_intensity=intensity,
 		background_dataset_paths=paths
 	)
-	env = FrameStack(env, frame_stack)
+	env = FrameStack(env, frame_stack, mask_model)
 
 	return env
 
 
 class FrameStack(gym.Wrapper):
 	"""Stack frames as observation"""
-	def __init__(self, env, k):
+	def __init__(self, env, k, mask_model=None):
 		gym.Wrapper.__init__(self, env)
 		self._k = k
 		self._frames = deque([], maxlen=k)
+		self.mask_model = mask_model
 		shp = env.observation_space['visual'].shape
 		self.observation_space = gym.spaces.Dict()
 		self.observation_space['visual'] = gym.spaces.Box(
@@ -66,7 +69,10 @@ class FrameStack(gym.Wrapper):
 		self._max_episode_steps = env._max_episode_steps
 
 	def reset(self):
-		obs = self.env.reset()
+		obs = self.env.reset() # obs["visual"]: numpy array [3, 100, 100]
+		if self.mask_model:
+			mask = self.mask_model.get_mask(obs["visual"])
+			obs["visual"] = (mask*obs["visual"]).numpy().astype(np.uint8)
 		for _ in range(self._k):
 			self._frames.append(obs['visual'])
 		return {
@@ -75,7 +81,23 @@ class FrameStack(gym.Wrapper):
 		}
 
 	def step(self, action):
-		obs, reward, terminated, truncated, info = self.env.step(action)
+		obs, reward, terminated, truncated, info = self.env.step(action) # obs["visual"]: numpy array [3, 100, 100] uint8
+		# from PIL import Image
+		# img = np.transpose(obs["visual"], (1,2,0))
+		# print(img.shape)
+		# img = Image.fromarray(img)
+		# img.save("./obs.jpg")
+		if self.mask_model:
+			mask = self.mask_model.get_mask(obs["visual"]) # tensor int8
+			obs["visual"] = (mask*obs["visual"]).numpy().astype(np.uint8)
+			# """
+			# test code
+			# """
+			# from PIL import Image
+			# img = np.transpose(obs["visual"], (1,2,0))
+			# img = Image.fromarray(img)
+			# img.save("./obs_masked.jpg")
+
 		done = terminated or truncated
 		self._frames.append(obs['visual'])
 		new_obs = {
@@ -87,3 +109,14 @@ class FrameStack(gym.Wrapper):
 	def _get_visual_obs(self):
 		assert len(self._frames) == self._k
 		return utils.LazyFrames(list(self._frames))
+
+"""
+obs -> mask_func(obs) -> masked_obs: derectly usable in RL algorithm
+
+mask_func(obs, cfg.attn_map_extractor, cfg.map_type, cfg.adapter): -> masked_obs
+	obs: original obs stack in env
+
+	cfg.attn_map_extractor: KeypointDetector / TextualInversionedCrossAttn
+	cfg.map_type: HardMask / ProbMask
+	cfg.adapter: use adapter for Gaussian prob map, textual inversion, no adapter
+"""

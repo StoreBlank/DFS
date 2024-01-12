@@ -1,19 +1,20 @@
 import os
 import hydra
 import wandb
+import argparse
 from algorithms.train_vanilla_sac import train as train_sac
 from algorithms.train_vanilla_bc import train as train_bc
 from algorithms.train_aac import train as train_aac
 from algorithms.train_mopa import train as train_mopa
 from algorithms.train_crd_bc import train as train_crd_bc
 from algorithms.train_pure_crd import train as train_pure_crd
+# from algorithms.train_pieg_origin import Workspace as W
 from omegaconf import OmegaConf
 
 os.environ["MUJOCO_GL"] = "egl"
 
-
 @hydra.main(
-    version_base=None, config_path="../configs", config_name="vanilla_state_config"
+    version_base=None, config_path="../configs", config_name="vanilla_visual_config.yaml"
 )
 def main(cfg):
     if cfg.algo.use_wandb:
@@ -35,9 +36,17 @@ def main(cfg):
         train_crd_bc(cfg)
     if cfg.algorithm == "pure_crd":
         train_pure_crd(cfg)
+    # if cfg.algorithm == "pieg":
+    #     from pathlib import Path
+    #     root_dir = Path.cwd()
+    #     workspace = W(cfg)
+    #     snapshot = root_dir / 'snapshot.pt'
+    #     if snapshot.exists():
+    #         print(f'resuming: {snapshot}')
+    #         workspace.load_snapshot()
+    #     workspace.train()
     if cfg.algo.use_wandb:
         wandb.finish()
-
 
 if __name__ == "__main__":
     main()

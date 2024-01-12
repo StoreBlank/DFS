@@ -8,6 +8,9 @@ from agents.sac_agent import StateSAC, VisualSAC, NoisyStateSAC
 from logger import Logger
 from datetime import datetime
 from video import VideoRecorder
+
+from utils import Keypoint_HardMask
+
 from ipdb import set_trace
 
 
@@ -46,6 +49,21 @@ def train(args):
 
     # Initialize environments
     if env_config.category == 'dmc':
+        mask_model = None
+        if env_config.use_mask:
+            mask_config = args.mask
+            assert mask_config.model in ["keypoint-hardmask"]
+            if mask_config.model == "keypoint-hardmask":
+                mask_model = Keypoint_HardMask(
+                    ldm_path=mask_config.ldm_path,
+                    embedding_path=mask_config.embedding_path,
+                    indices_path=mask_config.indices_path,
+                    mask_scale=mask_config.mask_scale,
+                    num_points=mask_config.num_points,
+                    augmentation_iterations=mask_config.augmentation_iterations,
+                    device= mask_config.device
+                )
+
         env = make_env(
             category=env_config.category,
             domain_name=env_config.domain_name,
@@ -58,6 +76,7 @@ def train(args):
             # mode="train",
             mode="distracting_cs",
             intensity=env_config.distracting_cs_intensity,
+            mask_model = mask_model
         )
         test_env = (
             None
@@ -151,7 +170,7 @@ def train(args):
                 L.dump(step)
 
             # Evaluate agent periodically
-            if step % algo_config.eval_freq == 0:
+            if step % algo_config.eval_freq == 0 and step!=0:
                 print("Evaluating:", work_dir)
                 L.log("eval/episode", episode, step)
                 evaluate(
@@ -226,5 +245,8 @@ def train(args):
         #     np_array, os.path.join(work_dir, 'debug', 'obs_aug.png'))
 
         episode_step += 1
+
+        end_time = time.time()
+        print(f"step {step} done! total time: {end_time - start_time} s")
     
     print("Completed training for", work_dir)

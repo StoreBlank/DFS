@@ -2,20 +2,21 @@ algorithm: visualbc_buffer_collector
 
 env:
   category: dmc
-  domain_name: finger
-  task_name: spin
+  domain_name: walker
+  task_name: walk
+  env_id: null
   frame_stack: 3
   action_repeat: 4
   image_size: 100
   episode_length: 1000
   eval_mode: null
-  distracting_cs_intensity: 0 # 
+  distracting_cs_intensity: 0.1 # 
 
 agent:
-  model_path: "./ckpts/state_v2.pt"
+  model_path: "/home/csq/DFS/logs/walker_walk/vanilla_state_sac/42/2024-01-07 03:03:36.966151/model/200000.pt" #"/home/csq/DFS/logs/finger_spin/vanilla_state_sac/42/2023-12-13 20:32:23.357307/model/500000.pt" # #
 
 algo:
   seed: 42
-  rollout_steps: 50000
+  rollout_steps: 200
   batch_size: 128
   log_dir: logs

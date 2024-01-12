@@ -1,19 +1,24 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision.transforms.functional as TF
-import torchvision.transforms as transform
 import numpy as np
+import math
 import os
 import glob
 import json
 import random
 import pickle
+import abc
+from PIL import Image
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.transforms.functional as TF
+import torchvision.transforms as transform
+from diffusers import StableDiffusionPipeline, DDIMScheduler
 from omegaconf import OmegaConf
 from datetime import datetime
 from tqdm import tqdm
-from ipdb import set_trace
+from time import time
 
+from ipdb import set_trace
 
 class eval_mode(object):
     def __init__(self, *models):
@@ -295,8 +300,12 @@ class ReplayBuffer(object):
         next_obses["visual"] = np.array(next_obses["visual"])
         return obses, next_obses
 
-    def __sample__(self, n=None):
-        idxs = self._get_idxs(n)
+    def __sample__(self, n=None, use_loader=False, loader_idx=None):
+        if use_loader:
+            assert loader_idx != None
+            idxs = [loader_idx]
+        else:
+            idxs = self._get_idxs(n)
 
         obs, next_obs = self._encode_obses(idxs)
         obs = {
@@ -326,8 +335,9 @@ class ReplayBuffer(object):
 
     #     return obs, actions, rewards, next_obs, not_dones
 
-    def sample(self, n=None):
-        obs, actions, _, _, rewards, next_obs, not_dones, _ = self.__sample__(n=n)
+    def sample(self, n=None, use_loader=False, loader_idx=None):
+        # if you want to put the buffer into a Dataloader, set use_loader=True, and set loader_idx as use idx in __getitem__
+        obs, actions, _, _, rewards, next_obs, not_dones, _ = self.__sample__(n=n, use_loader=use_loader, loader_idx=loader_idx)
 
         return obs, actions, rewards, next_obs, not_dones
 
@@ -500,3 +510,607 @@ class ContrastBuffer(ReplayBuffer):
                 self.memory_v2[t_layer][ind] = updated_t
 
         return out_s, out_t
+
+"""
+Code Borrowed From StableKeypoints
+"""
+"""
+1. attention control register
+"""
+class AttentionControl(abc.ABC):
+    def step_callback(self, x_t):
+        return x_t
+
+    def between_steps(self):
+        return
+
+    @property
+    def num_uncond_att_layers(self):
+        return 0
+
+    @abc.abstractmethod
+    def forward(self, dict, is_cross: bool, place_in_unet: str):
+        raise NotImplementedError
+
+    def __call__(self, dict, is_cross: bool, place_in_unet: str):
+        
+        dict = self.forward(dict, is_cross, place_in_unet)
+        
+        return dict['attn']
+
+    def reset(self):
+        self.cur_step = 0
+        self.cur_att_layer = 0
+
+    def __init__(self):
+        self.cur_step = 0
+        self.num_att_layers = -1
+        self.cur_att_layer = 0
+
+class AttentionStore(AttentionControl):
+    @staticmethod
+    def get_empty_store():
+        return {
+            "attn": [],
+        }
+
+    def forward(self, dict, is_cross: bool, place_in_unet: str):
+        key = f"{place_in_unet}_{'cross' if is_cross else 'self'}"
+        # if attn.shape[1] <= 32**2:  # avoid memory overhead
+        self.step_store["attn"].append(dict['attn']) 
+        
+        return dict
+
+    def reset(self):
+        super(AttentionStore, self).reset()
+        self.step_store = self.get_empty_store()
+
+    def __init__(self):
+        super(AttentionStore, self).__init__()
+        self.step_store = self.get_empty_store()
+
+def register_attention_control(model, controller, feature_upsample_res=256):
+    def ca_forward(self, place_in_unet):
+        to_out = self.to_out
+        if type(to_out) is torch.nn.modules.container.ModuleList:
+            to_out = self.to_out[0]
+        else:
+            to_out = self.to_out
+
+        def forward(x, context=None, mask=None):
+            batch_size, sequence_length, dim = x.shape
+            h = self.heads
+            q = self.to_q(x)
+            is_cross = context is not None
+
+            context = context if is_cross else x
+            k = self.to_k(context)
+            v = self.to_v(context)
+            q = self.reshape_heads_to_batch_dim(q)
+            k = self.reshape_heads_to_batch_dim(k)
+            v = self.reshape_heads_to_batch_dim(v)
+
+            sim = torch.einsum("b i d, b j d -> b i j", q, k) * self.scale
+            # sim = torch.matmul(q, k.permute(0, 2, 1)) * self.scale
+
+            if mask is not None:
+                mask = mask.reshape(batch_size, -1)
+                max_neg_value = -torch.finfo(sim.dtype).max
+                mask = mask[:, None, :].repeat(h, 1, 1)
+                sim = sim.masked_fill(~mask, max_neg_value)
+
+            # attention, what we cannot get enough of
+            attn = torch.nn.Softmax(dim=-1)(sim)
+            attn = attn.clone()
+            
+            out = torch.matmul(attn, v)
+
+            if (
+                is_cross
+                and sequence_length <= 32**2
+                and len(controller.step_store["attn"]) < 4
+            ):
+                x_reshaped = x.reshape(
+                    batch_size,
+                    int(sequence_length**0.5),
+                    int(sequence_length**0.5),
+                    dim,
+                ).permute(0, 3, 1, 2)
+                # upsample to feature_upsample_res**2
+                x_reshaped = (
+                    F.interpolate(
+                        x_reshaped,
+                        size=(feature_upsample_res, feature_upsample_res),
+                        mode="bicubic",
+                        align_corners=False,
+                    )
+                    .permute(0, 2, 3, 1)
+                    .reshape(batch_size, -1, dim)
+                )
+
+                q = self.to_q(x_reshaped)
+                q = self.reshape_heads_to_batch_dim(q)
+
+                sim = torch.einsum("b i d, b j d -> b i j", q, k) * self.scale
+                attn = torch.nn.Softmax(dim=-1)(sim)
+                attn = attn.clone()
+
+                attn = controller({"attn": attn}, is_cross, place_in_unet)
+
+            out = self.reshape_batch_dim_to_heads(out)
+            return to_out(out)
+
+        return forward
+
+    class DummyController:
+        def __call__(self, *args):
+            return args[0]
+
+        def __init__(self):
+            self.num_att_layers = 0
+
+    if controller is None:
+        controller = DummyController()
+
+    def register_recr(net_, count, place_in_unet):
+        if net_.__class__.__name__ == "CrossAttention":
+            net_.forward = ca_forward(net_, place_in_unet)
+            return count + 1
+        elif hasattr(net_, "children"):
+            for net__ in net_.children():
+                count = register_recr(net__, count, place_in_unet)
+        return count
+
+    cross_att_count = 0
+    sub_nets = model.named_children()
+    for net in sub_nets:
+        if "up" in net[0]:
+            cross_att_count += register_recr(net[1], 0, "up")
+
+    controller.num_att_layers = cross_att_count
+    
+    # create assertion with message
+    assert cross_att_count != 0, "No cross attention layers found in the model. Please check to make sure you're using diffusers==0.8.0."
+
+
+"""
+2. model loader with register
+"""
+def load_ldm(device, type="CompVis/stable-diffusion-v1-4", feature_upsample_res=256):
+    scheduler = DDIMScheduler(
+        beta_start=0.00085,
+        beta_end=0.012,
+        beta_schedule="scaled_linear",
+        clip_sample=False,
+        set_alpha_to_one=False,
+    )
+
+    MY_TOKEN = ""
+    NUM_DDIM_STEPS = 50
+    scheduler.set_timesteps(NUM_DDIM_STEPS)
+
+
+    ldm = StableDiffusionPipeline.from_pretrained(
+        type, use_auth_token=MY_TOKEN, scheduler=scheduler, local_files_only=True
+    ).to(device)
+    
+    if device != "cpu":
+        ldm.unet = nn.DataParallel(ldm.unet)
+        ldm.vae = nn.DataParallel(ldm.vae)
+        
+        controllers = {}
+        for device_id in ldm.unet.device_ids:
+            device = torch.device("cuda", device_id)
+            controller = AttentionStore()
+            controllers[device] = controller
+    else:
+        controllers = {}
+        _device = torch.device("cpu")
+        controller = AttentionStore()
+        controllers[_device] = controller
+
+        # patched_devices = set()
+
+    def hook_fn(module, input):
+        _device = input[0].device
+        # if device not in patched_devices:
+        register_attention_control(module, controllers[_device], feature_upsample_res=feature_upsample_res)
+        # patched_devices.add(device)
+
+    if device != "cpu":
+        ldm.unet.module.register_forward_pre_hook(hook_fn)
+    else:
+        ldm.unet.register_forward_pre_hook(hook_fn)
+    
+    num_gpus = torch.cuda.device_count()
+
+    for param in ldm.vae.parameters():
+        param.requires_grad = False
+    for param in ldm.text_encoder.parameters():
+        param.requires_grad = False
+    for param in ldm.unet.parameters():
+        param.requires_grad = False
+
+    return ldm, controllers, num_gpus
+
+"""
+3. help class for keypoint finding
+"""
+class RandomAffineWithInverse:
+    def __init__(
+        self,
+        degrees=0,
+        scale=(1.0, 1.0),
+        translate=(0.0, 0.0),
+    ):
+        self.degrees = degrees
+        self.scale = scale
+        self.translate = translate
+
+        # Initialize self.last_params to 0s
+        self.last_params = {
+            "theta": torch.eye(2, 3).unsqueeze(0),
+        }
+
+    def create_affine_matrix(self, angle, scale, translations_percent):
+        angle_rad = math.radians(angle)
+
+        # Create affine matrix
+        theta = torch.tensor(
+            [
+                [math.cos(angle_rad), math.sin(angle_rad), translations_percent[0]],
+                [-math.sin(angle_rad), math.cos(angle_rad), translations_percent[1]],
+            ],
+            dtype=torch.float,
+        )
+
+        theta[:, :2] = theta[:, :2] * scale
+        theta = theta.unsqueeze(0)  # Add batch dimension
+        return theta
+
+    def __call__(self, img_tensor, theta=None):
+
+        if theta is None:
+            theta = []
+            for i in range(img_tensor.shape[0]):
+                # Calculate random parameters
+                angle = torch.rand(1).item() * (2 * self.degrees) - self.degrees
+                scale_factor = torch.rand(1).item() * (self.scale[1] - self.scale[0]) + self.scale[0]
+                translations_percent = (
+                    torch.rand(1).item() * (2 * self.translate[0]) - self.translate[0],
+                    torch.rand(1).item() * (2 * self.translate[1]) - self.translate[1],
+                    # 1.0,
+                    # 1.0,
+                )
+
+                # Create the affine matrix
+                theta.append(self.create_affine_matrix(
+                    angle, scale_factor, translations_percent
+                ))
+            theta = torch.cat(theta, dim=0).to(img_tensor.device)
+
+        # Store them for inverse transformation
+        self.last_params = {
+            "theta": theta,
+        }
+
+        # Apply transformation
+        grid = F.affine_grid(theta, img_tensor.size(), align_corners=False).to(
+            img_tensor.device
+        )
+        transformed_img = F.grid_sample(img_tensor, grid, align_corners=False)
+
+        return transformed_img
+
+    def inverse(self, img_tensor):
+
+        # Retrieve stored parameters
+        theta = self.last_params["theta"]
+
+        # Augment the affine matrix to make it 3x3
+        theta_augmented = torch.cat(
+            [theta, torch.Tensor([[0, 0, 1]]).expand(theta.shape[0], -1, -1)], dim=1
+        )
+
+        # Compute the inverse of the affine matrix
+        theta_inv_augmented = torch.inverse(theta_augmented)
+        theta_inv = theta_inv_augmented[:, :2, :]  # Take the 2x3 part back
+
+        # Apply inverse transformation
+        grid_inv = F.affine_grid(theta_inv, img_tensor.size(), align_corners=False).to(
+            img_tensor.device
+        )
+        untransformed_img = F.grid_sample(img_tensor, grid_inv, align_corners=False)
+
+        return untransformed_img
+
+"""
+4. class we use for get mask
+---
+usage:
+    edit param in config file for agent training
+    you need first get embedding.pt, indices.pt
+    you can get this by running StableKeypoint/unsupervised/main.py (just the 1,2 stage is OK)
+"""
+class Keypoint_HardMask(object):
+    def __init__(
+        self, 
+        ldm_path,
+        embedding_path,
+        indices_path,
+        device,
+        # model usage and output
+        num_points = 10,
+        from_where = ["down_cross", "mid_cross", "up_cross"],
+        layers = [0,1,2,3],
+        noise_level = -1,
+        max_loc_strategy="argmax",
+        # augmentation for keypoint
+        mask_scale = 13, 
+        augment_degrees=15.0,
+        augment_scale=(0.8, 1.0),
+        augment_translate=(0.25, 0.25),
+        augmentation_iterations=20,
+        # image
+        feature_upsample_res = 128, # upsampled resolution for latent features grabbed from the attn operation
+        image_size = 512, # for vae input
+    ):
+        self.ldm, self.controllers, self.num_gpus = load_ldm(device, ldm_path, feature_upsample_res)
+        self.embeddings = torch.load(embedding_path).to(device).detach()
+        self.indices = torch.load(indices_path).to(device).detach()
+        self.device = device
+
+        self.transform = transform.Compose([
+            transform.Resize(image_size),
+            transform.ToTensor(),
+            transform.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ])
+
+        self.num_points = num_points
+        self.from_where = from_where
+        self.layers = layers
+        self.noise_level = noise_level
+        self.max_loc_strategy = max_loc_strategy
+
+        self.mask_scale = mask_scale
+        self.augment_degrees = augment_degrees
+        self.augment_scale = augment_scale
+        self.augment_translate = augment_translate
+        self.augmentation_iterations = augmentation_iterations
+
+        self.image_size = image_size
+
+    @torch.no_grad()
+    def get_mask(self, img):
+        """
+        img: [3, w, h] numpy array from obs["visual"], but we need first change it to [w,h,3] to align
+        """
+        assert img.shape[1] == img.shape[2]
+        start_time = time()
+
+        img = img.transpose(1,2,0) # convert to image like input
+        origin_image_size = img.shape[1]
+        img = transform.ToPILImage()(img)
+        img = self.transform(img) # to [3, 512, 512] tensor on CPU
+
+        map = self._run_image_with_context_augmented(img)
+
+        if self.max_loc_strategy == "argmax":   
+            points = self._find_max_pixel(map.view(self.num_points, 512, 512)) / 512.0 # [num_points, 2] TODO: or we put this into MLP in RL
+        else:
+            points = self._pixel_from_weighted_avg(map.view(self.num_points, 512, 512)) / 512.0
+        points = points.reshape(self.num_points, 2) # note the points here is in [0,1], size: [10, 2] on cuda
+
+        # set_trace()
+        
+        points = origin_image_size*points
+        mask_size = self.mask_scale * origin_image_size//100
+
+        mask = torch.zeros(origin_image_size, origin_image_size) # same to original size, not 512x512
+        for i in range(self.num_points):
+            y, x = points[i]
+            x = int(x)
+            y = int(y)
+
+            start_x = max(0, x - mask_size // 2)
+            end_x = min(origin_image_size, x + mask_size // 2)
+            start_y = max(0, y - mask_size // 2)
+            end_y = min(origin_image_size, y + mask_size // 2)
+
+            mask[start_y:end_y, start_x:end_x] = 1
+
+        mask.unsqueeze(0) # [1, 512, 512]
+
+        end_time = time()
+        print(f"mask got! time consuming: {end_time - start_time} s")
+
+        return mask.to(torch.int8)
+
+    def _find_max_pixel(self, map):
+        """
+        finds the pixel of the map with the highest value
+        map shape [batch_size, h, w]
+        
+        output shape [batch_size, 2]
+        """
+        num_points, h, w = map.shape
+
+        map_reshaped = map.view(num_points, -1)
+        max_indices = torch.argmax(map_reshaped, dim=-1)
+        max_indices = max_indices.view(num_points, 1)
+        max_indices = torch.cat([max_indices // w, max_indices % w], dim=-1) # [num_points, 2] with axis
+        
+        max_indices = max_indices + 0.5 # offset by a half a pixel to get the center of the pixel
+
+        return max_indices
+    
+    def _pixel_from_weighted_avg(self, heatmaps, distance=5):
+        """
+        finds the pixel of the map with the highest value
+        map shape [batch_size, h, w]
+        """
+        # Get the shape of the heatmaps
+        batch_size, m, n = heatmaps.shape
+        # If distance is provided, zero out elements outside the distance from the max pixel
+        if distance != -1:
+            # Find max pixel using your existing function or similar logic
+            max_pixel_indices = self._find_max_pixel(heatmaps)
+            x_max, y_max = max_pixel_indices[:, 0].long(), max_pixel_indices[:, 1].long()
+            # Create a meshgrid
+            x = torch.arange(0, m).float().view(1, m, 1).to(heatmaps.device).repeat(batch_size, 1, 1)
+            y = torch.arange(0, n).float().view(1, 1, n).to(heatmaps.device).repeat(batch_size, 1, 1)
+            # Calculate the distance to the max_pixel
+            distance_to_max = torch.sqrt((x - x_max.view(batch_size, 1, 1)) ** 2 + 
+                                        (y - y_max.view(batch_size, 1, 1)) ** 2)
+            # Zero out elements beyond the distance
+            heatmaps[distance_to_max > distance] = 0.0
+        # Compute the total value of the heatmaps
+        total_value = torch.sum(heatmaps, dim=[1, 2], keepdim=True)
+        # Normalize the heatmaps
+        normalized_heatmaps = heatmaps / (
+            total_value + 1e-6
+        )  # Adding a small constant to avoid division by zero
+        # Create meshgrid to represent the coordinates
+        x = torch.arange(0, m).float().view(1, m, 1).to(heatmaps.device)
+        y = torch.arange(0, n).float().view(1, 1, n).to(heatmaps.device)
+        # Compute the weighted sum for x and y
+        x_sum = torch.sum(x * normalized_heatmaps, dim=[1, 2])
+        y_sum = torch.sum(y * normalized_heatmaps, dim=[1, 2])
+
+        return torch.stack([x_sum, y_sum], dim=-1) + 0.5
+
+    @torch.no_grad()
+    def _run_image_with_context_augmented(self, image):
+        # if image is a torch.tensor, convert to numpy
+        if type(image) == torch.Tensor:
+            image = image.permute(1, 2, 0).detach().cpu().numpy()
+
+        num_samples = torch.zeros(len(self.indices), 512, 512).to(self.device)
+        sum_samples = torch.zeros(len(self.indices), 512, 512).to(self.device)
+
+        invertible_transform = RandomAffineWithInverse(
+            degrees=self.augment_degrees,
+            scale=self.augment_scale,
+            translate=self.augment_translate,
+        )
+
+        for i in range(self.augmentation_iterations//self.num_gpus):
+            
+            augmented_img = (
+                invertible_transform(torch.tensor(image)[None].repeat(self.num_gpus, 1, 1, 1).permute(0, 3, 1, 2))
+                .permute(0, 2, 3, 1)
+                .numpy()
+            )
+            
+            attn_maps = self._run_and_find_attn(augmented_img,upsample_res=512)
+            
+            attn_maps = torch.stack([map.to(self.device) for map in attn_maps])
+            
+            _num_samples = invertible_transform.inverse(torch.ones_like(attn_maps))
+            _sum_samples = invertible_transform.inverse(attn_maps)
+
+            num_samples += _num_samples.sum(dim=0)
+            sum_samples += _sum_samples.sum(dim=0)
+
+        # visualize sum_samples/num_samples
+        attention_maps = sum_samples / num_samples
+
+        # replace all nans with 0s
+        attention_maps[attention_maps != attention_maps] = 0
+
+        return attention_maps
+    
+    def _run_and_find_attn(self, image, upsample_res=32):
+        _, _ = self._find_pred_noise(image)
+        
+        attention_maps=[]
+        
+        for controller in self.controllers:
+
+            _attention_maps = self._collect_maps(
+                self.controllers[controller],
+                upsample_res=upsample_res,
+            )
+            
+            attention_maps.append(_attention_maps)
+
+            self.controllers[controller].reset()
+
+        return attention_maps
+
+    def _find_pred_noise(self, image):
+        # if image is a torch.tensor, convert to numpy
+        if type(image) == torch.Tensor:
+            image = image.permute(0, 2, 3, 1).detach().cpu().numpy()
+
+        with torch.no_grad():
+            latent = self._image2latent(image)
+            
+        noise = torch.randn_like(latent)
+
+        noisy_image = self.ldm.scheduler.add_noise( latent, noise, self.ldm.scheduler.timesteps[self.noise_level])
+
+        pred_noise = self.ldm.unet(noisy_image, 
+                            self.ldm.scheduler.timesteps[self.noise_level].repeat(noisy_image.shape[0]), 
+                            self.embeddings.repeat(noisy_image.shape[0], 1, 1))["sample"]
+        
+        return noise, pred_noise
+
+    def _image2latent(self, image):
+        with torch.no_grad():
+            if type(image) is Image:
+                image = np.array(image)
+            if type(image) is torch.Tensor and image.dim() == 4:
+                latents = image
+            else:
+                # print the max and min values of the image
+                image = torch.from_numpy(image).float() * 2 - 1
+                image = image.permute(0, 3, 1, 2).to(self.device)
+                if self.device != "cpu":
+                    latents = self.ldm.vae.module.encode(image)["latent_dist"].mean
+                else:
+                    latents = self.ldm.vae.encode(image)["latent_dist"].mean
+                latents = latents * 0.18215
+        return latents
+
+    def _collect_maps(self, controller, upsample_res=512):
+        """
+        returns the bilinearly upsampled attention map of size upsample_res x upsample_res for the first word in the prompt
+        """
+
+        attention_maps = controller.step_store['attn']
+        attention_maps_list = []
+        layer_overall = -1
+
+        # import ipdb; ipdb.set_trace()
+        for layer in range(len(attention_maps)):
+            layer_overall += 1
+            if layer_overall not in self.layers:
+                continue
+            data = attention_maps[layer]
+            data = data.reshape(
+                data.shape[0], int(data.shape[1] ** 0.5), int(data.shape[1] ** 0.5), data.shape[2]
+            )
+            
+            # import ipdb; ipdb.set_trace()
+            if self.indices is not None:
+                data = data[:, :, :, self.indices]
+
+            data = data.permute(0, 3, 1, 2)
+
+            if upsample_res != -1 and data.shape[1] ** 0.5 != upsample_res:
+                # bilinearly upsample the image to attn_sizexattn_size
+                data = F.interpolate(
+                    data,
+                    size=(upsample_res, upsample_res),
+                    mode="bilinear",
+                    align_corners=False,
+                )
+
+            attention_maps_list.append(data)
+
+        attention_maps_list = torch.stack(attention_maps_list, dim=0).mean(dim=(0, 1))
+
+        controller.reset()
+
+        return attention_maps_list

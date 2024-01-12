@@ -1,0 +1,38 @@
+# select trainer file
+algorithm: pieg # -
+
+# select env
+env:
+  category: dmc # -
+  domain_name: finger # -
+  task_name: spin # -
+  frame_stack: 3 # -
+  action_repeat: 2 # -
+  image_size: 100
+  episode_length: 1000
+  eval_mode: null
+  distracting_cs_intensity: 0.1
+
+# select agent file
+agent:
+  name: pieg # -
+  discount: 0.99 # -
+  hidden_dim: 1024 # -
+  feature_dim: 256 # -
+  critic_target_tau: 0.01 # -
+  lr: 1e-4 # -
+  update_every_steps: 2 # -
+
+# select algo mode of observation
+algo:
+  seed: 1 # -
+  train_steps: 500000 # - capacity for replay buffer
+  init_steps: 2000 # -
+  batch_size: 256 # -
+  save_freq: 100000
+  eval_freq: 10000
+  eval_episodes: 10
+  log_dir: logs
+  save_video: false # -
+  use_wandb: true # -
+  save_buffer: false

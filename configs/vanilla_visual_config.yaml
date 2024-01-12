@@ -6,12 +6,25 @@ env:
   category: dmc
   domain_name: finger
   task_name: spin
+  env_id: null
   frame_stack: 3
   action_repeat: 4
   image_size: 100
   episode_length: 1000
   eval_mode: null
-  distracting_cs_intensity: 0.1
+  distracting_cs_intensity: 0.3
+  use_mask: true
+
+# only work if you set use_mask to true
+mask:
+  model: keypoint-hardmask
+  ldm_path: /home/csq/DFS/StableKeypoints/pretrained/models--runwayml--stable-diffusion-v1-5
+  embedding_path: /home/csq/DFS/StableKeypoints/output/output-spin01/embedding.pt
+  indices_path: /home/csq/DFS/StableKeypoints/output/output-spin01/indices.pt
+  mask_scale: 13 # 13 x 13 hard mask for each keypoint
+  num_points: 10 # number of keypoints
+  augmentation_iterations: 1 # iters to inference keypoints for one img
+  device: cuda # TODO: dont do cuda:0, just use cuda here, if you want to specific cuda device, use it in CUDA_VISIBLE_DEVICES=i in command line
 
 # select agent file
 agent:
@@ -41,9 +54,9 @@ algo:
   train_steps: 500000 # capacity for replay buffer
   init_steps: 1000
   batch_size: 128 # batch for replay buffer
-  save_freq: 100000
-  eval_freq: 10000
-  eval_episodes: 30
+  save_freq: 5000
+  eval_freq: 50000
+  eval_episodes: 10
   crop: true
   image_crop_size: 84
   log_dir: logs

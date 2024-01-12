@@ -1,23 +1,24 @@
 algorithm: vanilla_state_sac
 
-# env:
-#   category: dmc
-#   domain_name: finger
-#   task_name: spin
-#   frame_stack: 3
-#   action_repeat: 4
-#   image_size: 100
-#   episode_length: 1000
-#   eval_mode: null
-#   distracting_cs_intensity: 0
-
 env:
-  category: maniskill
-  env_id: PickCube-v0
+  category: dmc
+  domain_name: cartpole
+  task_name: swingup
+  env_id: null
   frame_stack: 3
-  control_mode: pd_ee_delta_pose
-  render_mode: human
-  renderer_kwargs: {'offscreen_only': True}
+  action_repeat: 4
+  image_size: 100
+  episode_length: 1000
+  eval_mode: null
+  distracting_cs_intensity: 0.1
+
+# env:
+#   category: maniskill
+#   env_id: PickCube-v0
+#   frame_stack: 3
+#   control_mode: pd_ee_delta_pose
+#   render_mode: human
+#   renderer_kwargs: {'offscreen_only': True}
 
 agent:
   name: state_sac
@@ -37,11 +38,11 @@ agent:
 algo:
   seed: 42
   mode: state
-  train_steps: 500000
-  init_steps: 100
-  batch_size: 128
-  save_freq: 100000
-  eval_freq: 10000
+  train_steps: 200000
+  init_steps: 1000
+  batch_size: 256
+  save_freq: 50000
+  eval_freq: 50000
   # eval_episodes: 1
   eval_episodes: 30
   crop: false
