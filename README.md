@@ -17,6 +17,6 @@ the mask added in env ```wrapper_dmc.py```, which means if you add this module, 
 the keypoint mask class is named ```Keypoint_HardMask``` in utils, and all the related function are in this file. so if you have the trained ckpt of StableKeypoint, then you dont need that folder
 
 ## todo:
-- [] integrate pieg
-- [] textual inversion
-- [] adaptation
+- [ ] integrate pieg
+- [ ] textual inversion
+- [ ] adaptation
