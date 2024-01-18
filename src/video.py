@@ -1,5 +1,6 @@
 import imageio
 import os
+from ipdb import set_trace
 
 
 class VideoRecorder(object):

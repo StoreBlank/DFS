@@ -1,0 +1,53 @@
+algorithm: multitask_bc
+
+env:
+  category: metaworld
+  num_task: 5
+  env_ids: [
+    button-press-topdown-v2,
+    drawer-close-v2,
+    drawer-open-v2,
+    window-close-v2,
+    window-open-v2,
+  ]
+  frame_stack: 3
+  mode: rgb
+  image_size: 140
+  camera_id: 2
+
+agent:
+  name: multitask_bc
+  use_aug: ${algo.crop}
+  num_task: ${env.num_task}
+  hidden_dim: 1024
+  num_shared_layers: 11 
+  num_head_layers: 0 
+  num_filters: 32
+  projection_dim: 100
+  actor_beta: 0.9
+  bc_lr: 0.001
+  mode: "visual"
+  visual_contrastive_task: false
+
+expert:
+  buffer_paths: {
+    'button-press-topdown-v2': ./buffers/multitask_2/button-press-topdown-v2.pkl,
+    'drawer-close-v2': ./buffers/multitask_2/drawer-close-v2.pkl,
+    'drawer-open-v2': ./buffers/multitask_2/drawer-open-v2.pkl,
+    'window-close-v2': ./buffers/multitask_2/window-close-v2.pkl,
+    'window-open-v2': ./buffers/multitask_2/window-open-v2.pkl,
+  }
+
+algo:
+  seed: 42
+  train_steps: 200000 # 500000
+  save_freq: 50000
+  # eval_freq: 1
+  eval_freq: 10000
+  # eval_episodes: 1
+  eval_episodes: 30
+  crop: weak # or None for not use any aug, "weak" for just use crop
+  image_crop_size: 124
+  log_dir: logs
+  save_video: true #
+  use_wandb: true #

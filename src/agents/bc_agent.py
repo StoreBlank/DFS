@@ -114,6 +114,94 @@ class BC(SAC):
         self.update_actor(obs, mu_target, log_std_target, L, step)
 
 
+class MultitaskBC(SAC):
+    def __init__(self, agent_obs_shape, action_shape, agent_config):
+        shared_cnn = m.SharedCNN(
+            agent_obs_shape, agent_config.num_shared_layers, agent_config.num_filters
+        ).cuda()
+        head_cnn = m.HeadCNN(
+            shared_cnn.out_shape, agent_config.num_head_layers, agent_config.num_filters
+        ).cuda()
+        actor_encoder = m.Encoder(
+            shared_cnn,
+            head_cnn,
+            m.RLProjection(head_cnn.out_shape, agent_config.projection_dim),
+        )
+        self.use_aug = agent_config.use_aug
+
+        self.actor = m.MultitaskVisualActor(actor_encoder, agent_config.num_task, action_shape, agent_config.hidden_dim).cuda()
+
+        self.actor_optimizer = torch.optim.Adam(
+            self.actor.parameters(), lr=agent_config.bc_lr, betas=(agent_config.actor_beta, 0.999)
+        )
+        # assign different optimizer for different task
+        # self.actor_optimizers = [torch.optim.Adam(
+        #     self.actor.parameters(), lr=agent_config.bc_lr, betas=(agent_config.actor_beta, 0.999)
+        # ) for _ in range(agent_config.num_task)]
+
+        self.train()
+
+    # rewrite obs
+    def _obs_to_input(self, obs):
+        _obs = obs["visual"]
+        if isinstance(_obs, utils.LazyFrames):
+            _obs = np.array(_obs)
+        else:
+            _obs = _obs
+        _obs = torch.FloatTensor(_obs).cuda()
+        _obs = _obs.unsqueeze(0)
+        return _obs
+    
+    def select_action(self, obs, task_id):
+        _obs = self._obs_to_input(obs)
+        task_id = torch.tensor(task_id).cuda().unsqueeze(0)
+        with torch.no_grad():
+            mu, _, _, _ = self.actor(_obs, task_id, compute_pi=False, compute_log_pi=False)
+        return mu.cpu().data.numpy().flatten()
+    
+    def sample_action(self, obs, task_id):
+        _obs = self._obs_to_input(obs)
+        task_id = torch.tensor(task_id).cuda().unsqueeze(0)
+        with torch.no_grad():
+            mu, pi, _, _ = self.actor(_obs, task_id, compute_log_pi=False)
+        return pi.cpu().data.numpy().flatten()
+    
+    def train(self, training=True):
+        self.training = training
+        self.actor.train(training)
+
+    def update_actor(self, obs, task_ids, mu_target, log_std_target, L=None, step=None):
+        obs_visual = obs["visual"]
+
+        mu_pred, _, _, log_std_pred = self.actor(obs_visual, task_ids, False, False)
+
+        loss = (mu_pred - mu_target).pow(2).mean() + (log_std_pred - log_std_target).pow(2).mean()
+
+        if L is not None:
+            L.log("train_bc/actor_loss", loss, step)
+
+        optimizer = self.actor_optimizers[task_ids[0]]
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    def update(self, replay_buffer, task_id, L, step):
+        if self.use_aug:
+            if self.use_aug == "weak":
+                obs, _, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_aug_sample()
+            elif self.use_aug == "strong":
+                obs, _, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_costom_aug_sample(utils.add_random_color_patch, utils.gaussian, utils.random_conv, utils.random_crop, utils.random_affine)
+            else:
+                raise NotImplementedError("use_aug in config can be None or 'weak' or 'strong' ")
+        else:
+            obs, _, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_sample()
+
+        task_ids = torch.ones(replay_buffer.batch_size) * task_id
+        task_ids = task_ids.long().cuda()
+
+        self.update_actor(obs, task_ids, mu_target, log_std_target, L, step)
+
+
 class FeatBaselineBC(BC):
     def __init__(self, agent_obs_shape, action_shape, agent_config):
         super().__init__(agent_obs_shape, action_shape, agent_config)
@@ -313,6 +401,94 @@ class CrdBC(BC):
             obs=[obs, obs_visual_contrastive]
 
         self.update_actor(obs, idxs, L, step)
+
+
+class MultitaskCrdBC(MultitaskBC):
+    def __init__(self, agent_obs_shape, action_shape, agent_config):
+        shared_cnn = m.SharedCNN(
+            agent_obs_shape, agent_config.num_shared_layers, agent_config.num_filters
+        ).cuda()
+        head_cnn = m.HeadCNN(
+            shared_cnn.out_shape, agent_config.num_head_layers, agent_config.num_filters
+        ).cuda()
+        actor_encoder = m.Encoder(
+            shared_cnn,
+            head_cnn,
+            m.RLProjection(head_cnn.out_shape, agent_config.projection_dim),
+        )
+        self.use_aug = agent_config.use_aug
+
+        self.actor = m.MultitaskVisualActor(actor_encoder, agent_config.num_task, action_shape, agent_config.hidden_dim).cuda()
+
+        self.experts = []
+        self.criterions = [m.CRDLoss(agent_config).cuda() for _ in range(agent_config.num_task)]
+
+        self.optimizer = torch.optim.Adam(
+            nn.ModuleList([self.actor] + self.criterions).parameters(),
+            lr=agent_config.bc_lr,
+            betas=(agent_config.actor_beta, 0.999),
+        )
+        self.lambda_crd = agent_config.lambda_crd
+
+        self.visual_contrastive_task = agent_config.visual_contrastive_task
+
+        self.train()
+
+    def set_experts(self, experts):
+        self.experts = experts
+        for expert in self.experts:
+            expert.freeze()
+
+    def release(self):
+        """
+        release mode, get rid of expert and crd criterion, for store
+        """
+        self.experts = None
+        self.criterions = None
+
+    def prefill_memory(self, replay_buffers):
+        for task_id, replay_buffer in enumerate(replay_buffers):
+            self.criterions[task_id].memory.prefill(self.experts[task_id], replay_buffer)
+
+    def update_actor(self, obs, task_ids, idxs, L=None, step=None):
+        obs_visual = obs["visual"]
+        obs_state = obs["state"]
+
+        mu_pred, _, _, log_std_pred, feats_s = self.actor(obs_visual, task_ids, False, False, False, True, True)
+        with torch.no_grad():
+            # now only support the same task_id
+            mu_target, _, _, log_std_target, feats_t = self.experts[task_ids[0]].actor(obs_state, False, False, True, True)
+
+        loss_kl = (mu_pred - mu_target).pow(2).mean() + (log_std_pred - log_std_target).pow(2).mean()
+        loss_crd, _ = self.criterions[task_ids[0]](feats_s, feats_t, idxs)
+        loss = loss_kl + self.lambda_crd * loss_crd
+
+        if L is not None:
+            L.log('train_crd/actor_loss', loss, step)
+            L.log('train_crd/kl_loss', loss_kl, step)
+            L.log('train_crd/crd_loss', loss_crd, step)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+    def update(self, replay_buffer, task_id, L, step):
+        if self.use_aug:
+            if self.use_aug == "weak":
+                obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_aug_sample(return_idxs=True)
+            elif self.use_aug == "strong":
+                # print("strong aug")
+                obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_costom_aug_sample(utils.add_random_color_patch, utils.gaussian, utils.random_conv, utils.random_crop, utils.random_affine, return_idxs=True)
+            else:
+                raise NotImplementedError("use_aug in config can be None or 'weak' or 'strong' ")
+        else:
+            # print("no_aug")
+            obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_sample(return_idxs=True)
+
+        task_ids = torch.ones(replay_buffer.batch_size) * task_id
+        task_ids = task_ids.long().cuda()
+
+        self.update_actor(obs, task_ids, idxs, L, step)
 
 
 class PureCrdBC(BC):

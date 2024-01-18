@@ -82,6 +82,7 @@ def listdir(dir_path, filetype="jpg", sort=True):
     return fpaths
 
 
+# TODO: support rgbd frames
 class LazyFrames(object):
     def __init__(self, frames, extremely_lazy=True):
         self._frames = frames
@@ -124,7 +125,7 @@ class LazyFrames(object):
         return self._force()[i * 3 : (i + 1) * 3]
 
 
-def random_crop(x, size=84, w1=None, h1=None, return_w1_h1=False):
+def random_crop(x, size=124, w1=None, h1=None, return_w1_h1=False):
     """Vectorized CUDA implementation of random crop, imgs: (B,C,H,W), size: output size"""
     assert (w1 is None and h1 is None) or (
         w1 is not None and h1 is not None

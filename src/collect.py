@@ -2,6 +2,9 @@ import os
 import hydra
 import torch
 from env.wrappers import make_env
+import metaworld
+from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
+from env.wrapper_metaworld import wrap
 import utils
 from utils import collect_buffer
 from datetime import datetime
@@ -43,6 +46,15 @@ def main(args):
             frame_stack=env_config.frame_stack,
             control_mode=env_config.control_mode,
             renderer_kwargs=env_config.renderer_kwargs,
+        )
+    elif env_config.category == 'metaworld':
+        env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_config.env_id}-goal-observable']
+        env = env_class()
+        env = wrap(
+            env,
+            frame_stack=env_config.frame_stack,
+            mode=env_config.mode,
+            image_size=env_config.image_size,
         )
 
     # Create working directory

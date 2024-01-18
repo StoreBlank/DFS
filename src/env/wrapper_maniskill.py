@@ -1,7 +1,7 @@
 from collections import deque
 import utils
 import gymnasium as gym
-import gym.spaces as spaces
+import gymnasium.spaces as spaces
 import numpy as np
 import torch
 from einops import rearrange

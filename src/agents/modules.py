@@ -79,16 +79,21 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 class CenterCrop(nn.Module):
     def __init__(self, size):
         super().__init__()
-        assert size in {84, 100}, f"unexpected size: {size}"
+        # assert size in {84, 100}, f"unexpected size: {size}"
         self.size = size
 
     def forward(self, x):
         assert x.ndim == 4, "input must be a 4D tensor"
+        B, C, H, W = x.shape
+        assert H == W, "input must be a square tensor"
+        assert H >= self.size, "input size must be larger than target size"
+        assert (H - self.size) % 2 == 0, "crop must be even"
+        p = (H - self.size) // 2
         if x.size(2) == self.size and x.size(3) == self.size:
             return x
-        assert x.size(3) == 100, f"unexpected size: {x.size(3)}"
-        if self.size == 84:
-            p = 8
+        # assert x.size(3) == 100, f"unexpected size: {x.size(3)}"
+        # if self.size == 84:
+        #     p = 8
         return x[:, :, p:-p, p:-p]
 
 
@@ -145,7 +150,7 @@ class SharedCNN(nn.Module):
         self.num_filters = num_filters
 
         self.layers = [
-            CenterCrop(size=84),
+            CenterCrop(size=obs_shape[1]),
             NormalizeImg(),
             nn.Conv2d(obs_shape[0], num_filters, 3, stride=2),
         ]
@@ -198,11 +203,13 @@ class VisualActor(nn.Module):
         self.encoder = encoder
         self.layer_1 = nn.Linear(encoder.out_dim, hidden_dim)
         self.layer_2 = nn.Linear(hidden_dim, hidden_dim)
+        self.layer_3 = nn.Linear(hidden_dim, hidden_dim)
         self.act = activation()
         self.mu_layer = nn.Linear(hidden_dim, action_shape[0])
         self.log_std_layer = nn.Linear(hidden_dim, action_shape[0])
         self.layer_1.apply(weight_init)
         self.layer_2.apply(weight_init)
+        self.layer_3.apply(weight_init)
         self.mu_layer.apply(weight_init)
         self.log_std_layer.apply(weight_init)
 
@@ -212,8 +219,10 @@ class VisualActor(nn.Module):
         f1 = self.act(f1_pre)
         f2_pre = self.layer_2(f1)
         f2 = self.act(f2_pre)
-        mu = self.mu_layer(f2)
-        log_std = self.log_std_layer(f2)
+        f3_pre = self.layer_3(f2)
+        f3 = self.act(f3_pre)
+        mu = self.mu_layer(f3)
+        log_std = self.log_std_layer(f3)
         log_std = torch.tanh(log_std)
         log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
 
@@ -236,14 +245,14 @@ class VisualActor(nn.Module):
         mu, pi, log_pi = squash(mu, pi, log_pi)
 
         if pre_act:
-            return mu, pi, log_pi, log_std, [f1_pre, f1, f2_pre, f2]
+            return mu, pi, log_pi, log_std, [f1_pre, f1, f2_pre, f2, f3_pre, f3]
         elif feat:
-            return mu, pi, log_pi, log_std, [f1, f2]
+            return mu, pi, log_pi, log_std, [f1, f2, f3]
         else:
             return mu, pi, log_pi, log_std
 
     def feature_layers(self):
-        return [self.encoder, self.layer_1, self.layer_2, self.act]
+        return [self.encoder, self.layer_1, self.layer_2, self.layer_3, self.act]
 
     def last_layer(self):
         return [self.mu_layer, self.log_std_layer]
@@ -254,23 +263,44 @@ class VisualActor(nn.Module):
                 param.requires_grad = False
 
 
-class StateActor(nn.Module):
-    def __init__(self, obs_shape, action_shape, hidden_dim, activation=nn.ReLU):
+class MultitaskVisualActor(nn.Module):
+    def __init__(self, encoder, num_task, action_shape, hidden_dim, activation=nn.ReLU):
         super().__init__()
-        self.layer_1 = nn.Linear(obs_shape[0], hidden_dim)
+        self.num_task = num_task
+        self.encoder = encoder
+        self.task_encoder = nn.Sequential(
+            nn.Linear(num_task, 64),
+            nn.Tanh()
+        )
+        self.layer_1 = nn.Linear(encoder.out_dim + 64, hidden_dim)
         self.layer_2 = nn.Linear(hidden_dim, hidden_dim)
+        self.layer_3 = nn.Linear(hidden_dim, hidden_dim)
         self.act = activation()
         self.mu_layer = nn.Linear(hidden_dim, action_shape[0])
         self.log_std_layer = nn.Linear(hidden_dim, action_shape[0])
-        self.apply(weight_init)
+        self.task_encoder.apply(weight_init)
+        self.layer_1.apply(weight_init)
+        self.layer_2.apply(weight_init)
+        self.layer_3.apply(weight_init)
+        self.mu_layer.apply(weight_init)
+        self.log_std_layer.apply(weight_init)
 
-    def forward(self, obs, compute_pi=True, compute_log_pi=True, feat=False, pre_act=False):
-        f1_pre = self.layer_1(obs)
+    def forward(self, x, task_ids, compute_pi=True, compute_log_pi=True, detach=False, feat=False, pre_act=False):
+        """
+        x: a batch of observations
+        task_ids: corresponding task ids, (B,)
+        """
+        x = self.encoder(x, detach)
+        task_vec = self.task_encoder(F.one_hot(task_ids, self.num_task).float())
+        x = torch.cat([x, task_vec], dim=1)
+        f1_pre = self.layer_1(x)
         f1 = self.act(f1_pre)
         f2_pre = self.layer_2(f1)
         f2 = self.act(f2_pre)
-        mu = self.mu_layer(f2)
-        log_std = self.log_std_layer(f2)
+        f3_pre = self.layer_3(f2)
+        f3 = self.act(f3_pre)
+        mu = self.mu_layer(f3)
+        log_std = self.log_std_layer(f3)
         log_std = torch.tanh(log_std)
         log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
 
@@ -290,9 +320,66 @@ class StateActor(nn.Module):
         mu, pi, log_pi = squash(mu, pi, log_pi)
 
         if pre_act:
-            return mu, pi, log_pi, log_std, [f1_pre, f1, f2_pre, f2]
+            return mu, pi, log_pi, log_std, [f1_pre, f1, f2_pre, f2, f3_pre, f3]
         elif feat:
-            return mu, pi, log_pi, log_std, [f1, f2]
+            return mu, pi, log_pi, log_std, [f1, f2, f3]
+        else:
+            return mu, pi, log_pi, log_std
+        
+    def feature_layers(self):
+        return [self.encoder, self.task_encoder, self.layer_1, self.layer_2, self.layer_3, self.act]
+    
+    def last_layer(self):
+        return [self.mu_layer, self.log_std_layer]
+    
+    def freeze_feature_layers(self):
+        for layer in self.feature_layers():
+            for param in layer.parameters():
+                param.requires_grad = False
+
+
+class StateActor(nn.Module):
+    def __init__(self, obs_shape, action_shape, hidden_dim, activation=nn.ReLU):
+        super().__init__()
+        self.layer_1 = nn.Linear(obs_shape[0], hidden_dim)
+        self.layer_2 = nn.Linear(hidden_dim, hidden_dim)
+        self.layer_3 = nn.Linear(hidden_dim, hidden_dim)
+        self.act = activation()
+        self.mu_layer = nn.Linear(hidden_dim, action_shape[0])
+        self.log_std_layer = nn.Linear(hidden_dim, action_shape[0])
+        self.apply(weight_init)
+
+    def forward(self, obs, compute_pi=True, compute_log_pi=True, feat=False, pre_act=False):
+        f1_pre = self.layer_1(obs)
+        f1 = self.act(f1_pre)
+        f2_pre = self.layer_2(f1)
+        f2 = self.act(f2_pre)
+        f3_pre = self.layer_3(f2)
+        f3 = self.act(f3_pre)
+        mu = self.mu_layer(f3)
+        log_std = self.log_std_layer(f3)
+        log_std = torch.tanh(log_std)
+        log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
+
+        if compute_pi:
+            std = log_std.exp()
+            noise = torch.randn_like(mu)
+            pi = mu + noise * std
+        else:
+            pi = None
+            entropy = None
+
+        if compute_log_pi:
+            log_pi = gaussian_logprob(noise, log_std)
+        else:
+            log_pi = None
+
+        mu, pi, log_pi = squash(mu, pi, log_pi)
+
+        if pre_act:
+            return mu, pi, log_pi, log_std, [f1_pre, f1, f2_pre, f2, f3_pre, f3]
+        elif feat:
+            return mu, pi, log_pi, log_std, [f1, f2, f3]
         else:
             return mu, pi, log_pi, log_std
 
@@ -368,7 +455,7 @@ class MLPQFunction(nn.Module):
     def __init__(self, obs_shape, action_shape, hidden_dim, activation):
         super().__init__()
         self.q = mlp(
-            [obs_shape[0] + action_shape[0]] + [hidden_dim, hidden_dim] + [1],
+            [obs_shape[0] + action_shape[0]] + [hidden_dim, hidden_dim, hidden_dim] + [1],
             activation,
         )
         self.apply(weight_init)

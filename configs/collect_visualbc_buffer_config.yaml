@@ -1,21 +1,29 @@
 algorithm: visualbc_buffer_collector
 
+# env:
+#   category: dmc
+#   domain_name: finger
+#   task_name: spin
+#   frame_stack: 3
+#   action_repeat: 4
+#   image_size: 100
+#   episode_length: 1000
+#   eval_mode: null
+#   distracting_cs_intensity: 0 # 
+
 env:
-  category: dmc
-  domain_name: finger
-  task_name: spin
+  category: metaworld
+  env_id: pick-place-v2
   frame_stack: 3
-  action_repeat: 4
-  image_size: 100
-  episode_length: 1000
-  eval_mode: null
-  distracting_cs_intensity: 0 # 
+  mode: rgb
+  image_size: 140
+  camera_id: 2
 
 agent:
-  model_path: "./ckpts/state_v2.pt"
+  model_path: "./ckpts/multitask/pick-place-v2.pt"
 
 algo:
   seed: 42
-  rollout_steps: 50000
+  rollout_steps: 100000
   batch_size: 128
   log_dir: logs

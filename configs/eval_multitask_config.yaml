@@ -1,0 +1,24 @@
+algos: {
+  'bc': experiment_records/1_18/bc.pt,
+  'crd_bc': experiment_records/1_18/crd_bc.pt,
+}
+
+seed: 42
+save_video: true
+eval_episodes: 30
+# eval_episodes: 5
+log_dir: logs
+
+env:
+  robust: true
+  env_ids: [
+    button-press-topdown-v2,
+    drawer-close-v2,
+    drawer-open-v2,
+    window-close-v2,
+    window-open-v2,
+  ]
+  frame_stack: 3
+  mode: rgb
+  image_size: 140
+  camera_id: 2

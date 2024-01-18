@@ -7,6 +7,8 @@ from algorithms.train_aac import train as train_aac
 from algorithms.train_mopa import train as train_mopa
 from algorithms.train_crd_bc import train as train_crd_bc
 from algorithms.train_pure_crd import train as train_pure_crd
+from algorithms.train_multitask_bc import train as train_multitask_bc
+from algorithms.train_multitask_crd_bc import train as train_multitask_crd_bc
 from omegaconf import OmegaConf
 
 os.environ["MUJOCO_GL"] = "egl"
@@ -27,12 +29,16 @@ def main(cfg):
         train_sac(cfg)
     if cfg.algorithm == "vanilla_bc" or cfg.algorithm == "vanilla_bc_strong_aug" or cfg.algorithm == "vanilla_bc_aug_contrast":
         train_bc(cfg)
+    if cfg.algorithm == "multitask_bc":
+        train_multitask_bc(cfg)
     if cfg.algorithm == "vanilla_aac":
         train_aac(cfg)
     if cfg.algorithm == "mopa":
         train_mopa(cfg)
     if cfg.algorithm == "crd_bc" or cfg.algorithm == "crd_bc_strong_aug" or cfg.algorithm == "crd_bc_aug_contrast":
         train_crd_bc(cfg)
+    if cfg.algorithm == "multitask_crd_bc":
+        train_multitask_crd_bc(cfg)
     if cfg.algorithm == "pure_crd":
         train_pure_crd(cfg)
     if cfg.algo.use_wandb:

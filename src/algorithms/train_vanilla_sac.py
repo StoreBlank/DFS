@@ -3,6 +3,10 @@ import os
 import numpy as np
 import utils
 import time
+import random
+import metaworld
+from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
+from env.wrapper_metaworld import wrap
 from env.wrappers import make_env
 from agents.sac_agent import StateSAC, VisualSAC, NoisyStateSAC
 from logger import Logger
@@ -39,7 +43,10 @@ def train(args):
     env_config = args.env
     agent_config = args.agent
     algo_config = args.algo
-    algo_config.image_crop_size = 84 if algo_config.crop else 100
+    if not algo_config.crop:
+        algo_config.image_crop_size = env_config.image_size
+    if not hasattr(env_config, 'camera_id'):
+        env_config.camera_id = 0
 
     # Set seed
     utils.set_seed_everywhere(algo_config.seed)
@@ -84,6 +91,30 @@ def train(args):
             renderer_kwargs=env_config.renderer_kwargs,
         )
         test_env = None
+    elif env_config.category == 'metaworld':
+        test_env = None
+        mt1 = metaworld.MT1(env_config.env_id)
+        env_class = mt1.train_classes[env_config.env_id]
+        def make_env():
+            env = env_class()
+            task = random.choice(mt1.train_tasks)
+            env.set_task(task)
+            env = wrap(
+                env,
+                frame_stack=env_config.frame_stack,
+                mode=env_config.mode,
+                image_size=env_config.image_size,
+            )
+            return env
+        # env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_config.env_id}-goal-observable']
+        # env = env_class()
+        # env = wrap(
+        #     env,
+        #     frame_stack=env_config.frame_stack,
+        #     mode=env_config.mode,
+        #     image_size=env_config.image_size,
+        # )
+        # test_env = None
 
     # Create working directory
     if env_config.category == 'dmc':
@@ -103,12 +134,13 @@ def train(args):
     model_dir = utils.make_dir(os.path.join(work_dir, "model"))
     video_dir = utils.make_dir(os.path.join(work_dir, "video"))
     video = VideoRecorder(
-        video_dir if algo_config.save_video else None, height=448, width=448
+        video_dir if algo_config.save_video else None, height=448, width=448, camera_id=env_config.camera_id
     )
     utils.write_info(args, os.path.join(work_dir, "info.log"))
 
     # Prepare agent
     assert torch.cuda.is_available(), "must have cuda enabled"
+    env = make_env()
     replay_buffer = utils.ReplayBuffer(
         action_shape=env.action_space.shape,
         capacity=algo_config.train_steps,
@@ -180,6 +212,9 @@ def train(args):
 
             L.log("train/episode_reward", episode_reward, step)
 
+            # obs = env.reset()
+            env.close()
+            env = make_env()
             obs = env.reset()
             done = False
             episode_reward = 0
@@ -228,3 +263,4 @@ def train(args):
         episode_step += 1
     
     print("Completed training for", work_dir)
+    env.close()
