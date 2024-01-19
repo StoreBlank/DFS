@@ -672,7 +672,7 @@ class CRDLoss(nn.Module):
                 nn.Flatten(),
                 nn.Linear(s_dim, opt.feat_dim),
             ))
-        self.embeds_s = nn.ModuleList(self.embeds_s)
+        self.embeds_s = nn.ModuleList(self.embeds_s).cuda()
         # self.embed_t = nn.Sequential(
         #     nn.Flatten(),
         #     nn.Linear(opt.t_dim, opt.feat_dim),
@@ -683,10 +683,11 @@ class CRDLoss(nn.Module):
                 nn.Flatten(),
                 nn.Linear(t_dim, opt.feat_dim),
             ))
-        self.embeds_t = nn.ModuleList(self.embeds_t)
+        self.embeds_t = nn.ModuleList(self.embeds_t).cuda()
         self.crd_weight = opt.crd_weight
         self.residual = opt.nce_k / opt.n_data
         self.T = opt.T
+        self.memory_in_gpu = opt.contrastive_memory_in_gpu
         self.memory = ContrastMemory(
             opt.n_data,
             opt.feat_dim,
@@ -696,6 +697,8 @@ class CRDLoss(nn.Module):
             opt.T,
             opt.momentum
         )
+        if self.memory_in_gpu:
+            self.memory.cuda()
         self.Z_v1 = -np.ones(len(opt.s_dims))
         self.Z_v2 = -np.ones(len(opt.t_dims))
         self.apply(weight_init)
@@ -709,7 +712,12 @@ class CRDLoss(nn.Module):
         f_t = self.embeds_t[t_layer](f_t)
         f_t = F.normalize(f_t, dim=1)
 
-        weight_s, weight_t = self.memory(f_s, f_t, s_layer, t_layer, idx, contrast_idx)
+        if self.memory_in_gpu:
+            weight_s, weight_t = self.memory(f_s, f_t, s_layer, t_layer, idx, contrast_idx)
+        else:
+            weight_s, weight_t = self.memory(f_s.cpu(), f_t.cpu(), s_layer, t_layer, idx, contrast_idx)
+            weight_s = weight_s.cuda()
+            weight_t = weight_t.cuda()
 
         # teacher side
         out_t = torch.bmm(weight_s, f_t.unsqueeze(2)).squeeze(2)
@@ -854,10 +862,11 @@ class HalfProjCRDLoss(nn.Module):
                 nn.Flatten(),
                 nn.Linear(s_dim, opt.feat_dim),
             ))
-        self.embeds_s = nn.ModuleList(self.embeds_s)
+        self.embeds_s = nn.ModuleList(self.embeds_s).cuda()
         self.crd_weight = opt.crd_weight
         self.residual = opt.nce_k / opt.n_data
         self.T = opt.T
+        self.memory_in_gpu = opt.contrastive_memory_in_gpu
         self.memory = HalfProjContrastMemory(
             opt.n_data,
             opt.feat_dim,
@@ -865,6 +874,8 @@ class HalfProjCRDLoss(nn.Module):
             opt.nce_k,
             opt.T
         )
+        if self.memory_in_gpu:
+            self.memory.cuda()
         self.Z = -np.ones(len(opt.t_dims))
         self.apply(weight_init)
 
@@ -874,7 +885,11 @@ class HalfProjCRDLoss(nn.Module):
         """
         f_s = self.embeds_s[s_layer](f_s)
 
-        weight_t = self.memory(t_layer, idx, contrast_idx)
+        if self.memory_in_gpu:
+            weight_t = self.memory(t_layer, idx, contrast_idx)
+        else:
+            weight_t = self.memory(t_layer, idx, contrast_idx)
+            weight_t = weight_t.cuda()
 
         out = l2_dist(f_s, weight_t)
         out = torch.exp(-out / self.T)

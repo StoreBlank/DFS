@@ -24,42 +24,7 @@ def main(args):
     # Set seed
     utils.set_seed_everywhere(algo_config.seed)
 
-    # Initialize environments
-    if env_config.category == 'dmc':
-        env = make_env(
-            category=env_config.category,
-            domain_name=env_config.domain_name,
-            task_name=env_config.task_name,
-            seed=algo_config.seed,
-            episode_length=env_config.episode_length,
-            action_repeat=env_config.action_repeat,
-            image_size=env_config.image_size,
-            frame_stack=env_config.frame_stack,
-            # mode="train",
-            mode="distracting_cs",
-            intensity=env_config.distracting_cs_intensity,
-        )
-    elif env_config.category == 'maniskill':
-        env = make_env(
-            category=env_config.category,
-            env_id=env_config.env_id,
-            frame_stack=env_config.frame_stack,
-            control_mode=env_config.control_mode,
-            renderer_kwargs=env_config.renderer_kwargs,
-        )
-    elif env_config.category == 'metaworld':
-        env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_config.env_id}-goal-observable']
-        env = env_class()
-        env = wrap(
-            env,
-            frame_stack=env_config.frame_stack,
-            mode=env_config.mode,
-            image_size=env_config.image_size,
-        )
-
     # Create working directory
-    if env_config.category == 'dmc':
-        env_config.env_id = env_config.domain_name + "_" + env_config.task_name
     work_dir = os.path.join(
         algo_config.log_dir,
         env_config.env_id,
@@ -78,7 +43,7 @@ def main(args):
         param.requires_grad = False
     print("Expert loaded!")
 
-    collect_buffer(agent, env, algo_config.rollout_steps, algo_config.batch_size, work_dir)
+    collect_buffer(agent, env_config, algo_config.rollout_steps, algo_config.batch_size, work_dir)
 
 
 if __name__ == "__main__":

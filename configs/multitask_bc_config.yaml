@@ -12,6 +12,8 @@ env:
   ]
   frame_stack: 3
   mode: rgb
+  # whether randomize the task when evaluation
+  robust: false
   image_size: 140
   camera_id: 2
 
@@ -45,9 +47,9 @@ algo:
   # eval_freq: 1
   eval_freq: 10000
   # eval_episodes: 1
-  eval_episodes: 30
+  eval_episodes: 0
   crop: weak # or None for not use any aug, "weak" for just use crop
   image_crop_size: 124
   log_dir: logs
   save_video: true #
-  use_wandb: true #
+  use_wandb: false #

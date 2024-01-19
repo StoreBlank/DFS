@@ -51,6 +51,9 @@ agent:
   T: 0.07
   # T: 10
   momentum: 0.5
+  # whether to store the contrastive memory in gpu
+  # in gpu will consume 10G+ memory, but in cpu will consume 10 times more time
+  contrastive_memory_in_gpu: true
   mode: "visual"
   visual_contrastive_task: false
 
@@ -77,10 +80,10 @@ algo:
   save_freq: 50000
   eval_freq: 10000
   # eval_episodes: 1
-  eval_episodes: 30
+  eval_episodes: 0
   feature_dim: 512
   crop: weak
   image_crop_size: 124
   log_dir: logs
   save_video: true #
-  use_wandb: true #
+  use_wandb: false #

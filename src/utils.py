@@ -12,6 +12,9 @@ import pickle
 from omegaconf import OmegaConf
 from datetime import datetime
 from tqdm import tqdm
+import metaworld
+from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
+from env.wrapper_metaworld import wrap
 from ipdb import set_trace
 
 
@@ -373,8 +376,37 @@ class ReplayBuffer(object):
         return obs, actions, mus, log_stds, rewards, next_obs, not_dones
 
 
-def collect_buffer(agent, env, rollout_steps, batch_size, work_dir):
+def collect_buffer(agent, env_config, rollout_steps, batch_size, work_dir):
     assert torch.cuda.is_available(), "must have cuda enabled"
+
+    # Initialize environments
+    mt10 = metaworld.MT10()
+    if env_config.robust:
+        def initialize_env(env_id):
+            env = mt10.train_classes[env_id]()
+            task = random.choice([task for task in mt10.train_tasks
+                            if task.env_name == env_id])
+            env.set_task(task)
+            env = wrap(
+                env,
+                frame_stack=env_config.frame_stack,
+                mode=env_config.mode,
+                image_size=env_config.image_size,
+            )
+            return env
+    else:
+        def initialize_env(env_id):
+            env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_id}-goal-observable']
+            env = env_class()
+            env = wrap(
+                env,
+                frame_stack=env_config.frame_stack,
+                mode=env_config.mode,
+                image_size=env_config.image_size,
+            )
+            return env
+
+    env = initialize_env(env_config.env_id)
     replay_buffer = ReplayBuffer(
         action_shape=env.action_space.shape,
         capacity=rollout_steps,
@@ -384,6 +416,8 @@ def collect_buffer(agent, env, rollout_steps, batch_size, work_dir):
     start_step, episode, episode_reward, done = 0, 0, 0, True
     for step in tqdm(range(start_step, rollout_steps + 1), desc="Rollout Progress"):
         if done:
+            env.close()
+            env = initialize_env(env_config.env_id)
             obs = env.reset()
             done = False
             print(f"Episode {episode} reward: {episode_reward}")
@@ -404,6 +438,7 @@ def collect_buffer(agent, env, rollout_steps, batch_size, work_dir):
         replay_buffer.save(os.path.join(buffer_dir, f"{rollout_steps}.pkl"))
 
     print("Completed rollout")
+    env.close()
     return replay_buffer
 
 

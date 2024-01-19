@@ -180,10 +180,9 @@ class MultitaskBC(SAC):
         if L is not None:
             L.log("train_bc/actor_loss", loss, step)
 
-        optimizer = self.actor_optimizers[task_ids[0]]
-        optimizer.zero_grad()
+        self.actor_optimizer.zero_grad()
         loss.backward()
-        optimizer.step()
+        self.actor_optimizer.step()
 
     def update(self, replay_buffer, task_id, L, step):
         if self.use_aug:
@@ -421,7 +420,7 @@ class MultitaskCrdBC(MultitaskBC):
         self.actor = m.MultitaskVisualActor(actor_encoder, agent_config.num_task, action_shape, agent_config.hidden_dim).cuda()
 
         self.experts = []
-        self.criterions = [m.CRDLoss(agent_config).cuda() for _ in range(agent_config.num_task)]
+        self.criterions = [m.CRDLoss(agent_config) for _ in range(agent_config.num_task)]
 
         self.optimizer = torch.optim.Adam(
             nn.ModuleList([self.actor] + self.criterions).parameters(),

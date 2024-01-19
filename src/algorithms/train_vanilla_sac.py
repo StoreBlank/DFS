@@ -7,7 +7,6 @@ import random
 import metaworld
 from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
 from env.wrapper_metaworld import wrap
-from env.wrappers import make_env
 from agents.sac_agent import StateSAC, VisualSAC, NoisyStateSAC
 from logger import Logger
 from datetime import datetime
@@ -52,46 +51,7 @@ def train(args):
     utils.set_seed_everywhere(algo_config.seed)
 
     # Initialize environments
-    if env_config.category == 'dmc':
-        env = make_env(
-            category=env_config.category,
-            domain_name=env_config.domain_name,
-            task_name=env_config.task_name,
-            seed=algo_config.seed,
-            episode_length=env_config.episode_length,
-            action_repeat=env_config.action_repeat,
-            image_size=env_config.image_size,
-            frame_stack=env_config.frame_stack,
-            # mode="train",
-            mode="distracting_cs",
-            intensity=env_config.distracting_cs_intensity,
-        )
-        test_env = (
-            None
-            if env_config.eval_mode is None
-            else make_env(
-                category=env_config.category,
-                domain_name=env_config.domain_name,
-                task_name=env_config.task_name,
-                seed=algo_config.seed + 42,
-                episode_length=env_config.episode_length,
-                action_repeat=env_config.action_repeat,
-                image_size=env_config.image_size,
-                frame_stack=env_config.frame_stack,
-                mode=env_config.eval_mode,
-                intensity=env_config.distracting_cs_intensity,
-            )
-        )
-    elif env_config.category == 'maniskill':
-        env = make_env(
-            category=env_config.category,
-            env_id=env_config.env_id,
-            frame_stack=env_config.frame_stack,
-            control_mode=env_config.control_mode,
-            renderer_kwargs=env_config.renderer_kwargs,
-        )
-        test_env = None
-    elif env_config.category == 'metaworld':
+    if env_config.category == 'metaworld':
         test_env = None
         mt1 = metaworld.MT1(env_config.env_id)
         env_class = mt1.train_classes[env_config.env_id]
@@ -117,8 +77,6 @@ def train(args):
         # test_env = None
 
     # Create working directory
-    if env_config.category == 'dmc':
-        env_config.env_id = env_config.domain_name + "_" + env_config.task_name
     work_dir = os.path.join(
         algo_config.log_dir,
         env_config.env_id,
