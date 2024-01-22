@@ -59,25 +59,25 @@ agent:
 
 expert:
   model_paths: {
-    'button-press-topdown-v2': ./ckpts/multitask_robust/button-press-topdown-v2.pt,
-    'drawer-close-v2': ./ckpts/multitask_robust/drawer-close-v2.pt,
-    'drawer-open-v2': ./ckpts/multitask_robust/drawer-open-v2.pt,
-    'window-close-v2': ./ckpts/multitask_robust/window-close-v2.pt,
-    'window-open-v2': ./ckpts/multitask_robust/window-open-v2.pt,
+    'button-press-topdown-v2': ./ckpts/multitask/button-press-topdown-v2.pt,
+    'drawer-close-v2': ./ckpts/multitask/drawer-close-v2.pt,
+    'drawer-open-v2': ./ckpts/multitask/drawer-open-v2.pt,
+    'window-close-v2': ./ckpts/multitask/window-close-v2.pt,
+    'window-open-v2': ./ckpts/multitask/window-open-v2.pt,
   }
   buffer_paths: {
-    'button-press-topdown-v2': ./buffers/multitask_2/button-press-topdown-v2.pkl,
-    'drawer-close-v2': ./buffers/multitask_2/drawer-close-v2.pkl,
-    'drawer-open-v2': ./buffers/multitask_2/drawer-open-v2.pkl,
-    'window-close-v2': ./buffers/multitask_2/window-close-v2.pkl,
-    'window-open-v2': ./buffers/multitask_2/window-open-v2.pkl,
+    'button-press-topdown-v2': ./buffers/multitask/button-press-topdown-v2.pkl,
+    'drawer-close-v2': ./buffers/multitask/drawer-close-v2.pkl,
+    'drawer-open-v2': ./buffers/multitask/drawer-open-v2.pkl,
+    'window-close-v2': ./buffers/multitask/window-close-v2.pkl,
+    'window-open-v2': ./buffers/multitask/window-open-v2.pkl,
   }
 
 algo:
   seed: 42
-  train_steps: 200000 # 500000
+  train_steps: 100000 # 500000
   batch_size: 128
-  save_freq: 50000
+  save_freq: 20000
   eval_freq: 10000
   # eval_episodes: 1
   eval_episodes: 0
