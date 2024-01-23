@@ -56,9 +56,10 @@ class MetaworldWrapper(gym.Wrapper):
 
 class FrameStack(gym.Wrapper):
     """Stack frames as observation"""
-    def __init__(self, env, k):
+    def __init__(self, env, k, done_on_success):
         gym.Wrapper.__init__(self, env)
         self._k = k
+        self._done_on_success = done_on_success
         self._frames = deque([], maxlen=k)
         shp = env.observation_space['visual'].shape
         self.observation_space = spaces.Dict()
@@ -82,7 +83,7 @@ class FrameStack(gym.Wrapper):
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
         done = terminated or truncated
-        if info['success']:
+        if info['success'] and self._done_on_success:
             done = True
         self._frames.append(obs['visual'])
         new_obs = {
@@ -99,7 +100,7 @@ class FrameStack(gym.Wrapper):
         return utils.LazyFrames(list(self._frames))
 
 
-def wrap(env, frame_stack=3, mode='rgb', image_size=400):
+def wrap(env, frame_stack=3, mode='rgb', image_size=400, done_on_success=True):
     env = MetaworldWrapper(env, mode=mode, image_size=image_size)
-    env = FrameStack(env, frame_stack)
+    env = FrameStack(env, frame_stack, done_on_success)
     return env

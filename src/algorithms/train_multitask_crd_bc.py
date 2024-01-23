@@ -3,6 +3,8 @@ import os
 import numpy as np
 import utils
 import time
+import random
+import metaworld
 from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
 from env.wrapper_metaworld import wrap
 from env.wrappers import make_env
@@ -53,16 +55,31 @@ def train(args):
     # Initialize environments
     num_task = env_config.num_task
     env_ids = env_config.env_ids
-    def initialize_env(env_id):
-        env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_id}-goal-observable']
-        env = env_class()
-        env = wrap(
-            env,
-            frame_stack=env_config.frame_stack,
-            mode=env_config.mode,
-            image_size=env_config.image_size,
-        )
-        return env
+    mt10 = metaworld.MT10()
+    if env_config.robust:
+        def initialize_env(env_id):
+            env = mt10.train_classes[env_id]()
+            task = random.choice([task for task in mt10.train_tasks
+                            if task.env_name == env_id])
+            env.set_task(task)
+            env = wrap(
+                env,
+                frame_stack=env_config.frame_stack,
+                mode=env_config.mode,
+                image_size=env_config.image_size,
+            )
+            return env
+    else:
+        def initialize_env(env_id):
+            env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_id}-goal-observable']
+            env = env_class()
+            env = wrap(
+                env,
+                frame_stack=env_config.frame_stack,
+                mode=env_config.mode,
+                image_size=env_config.image_size,
+            )
+            return env
 
     # Create working directory
     work_dir = os.path.join(
@@ -144,7 +161,10 @@ def train(args):
 
         # Save agent periodically
         if step > start_step and step % algo_config.save_freq == 0:
+            # criterions not saved
+            reloads = agent.release()
             torch.save(agent, os.path.join(model_dir, f"{step}.pt"))
+            agent.reload_for_training(reloads)
 
         # Run training update
         for task_id in range(num_task):

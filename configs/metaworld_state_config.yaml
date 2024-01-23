@@ -5,6 +5,7 @@ env:
   env_id: pick-place-v2
   frame_stack: 3
   mode: rgb
+  robust: true
   image_size: 140
   camera_id: 2
 

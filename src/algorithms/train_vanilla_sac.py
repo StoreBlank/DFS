@@ -51,8 +51,7 @@ def train(args):
     utils.set_seed_everywhere(algo_config.seed)
 
     # Initialize environments
-    if env_config.category == 'metaworld':
-        test_env = None
+    if env_config.robust:
         mt1 = metaworld.MT1(env_config.env_id)
         env_class = mt1.train_classes[env_config.env_id]
         def make_env():
@@ -64,17 +63,21 @@ def train(args):
                 frame_stack=env_config.frame_stack,
                 mode=env_config.mode,
                 image_size=env_config.image_size,
+                done_on_success=False,
             )
             return env
-        # env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_config.env_id}-goal-observable']
-        # env = env_class()
-        # env = wrap(
-        #     env,
-        #     frame_stack=env_config.frame_stack,
-        #     mode=env_config.mode,
-        #     image_size=env_config.image_size,
-        # )
-        # test_env = None
+    else:
+        env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_config.env_id}-goal-observable']
+        def make_env():
+            env = env_class()
+            env = wrap(
+                env,
+                frame_stack=env_config.frame_stack,
+                mode=env_config.mode,
+                image_size=env_config.image_size,
+                done_on_success=False,
+            )
+            return env
 
     # Create working directory
     work_dir = os.path.join(
@@ -152,16 +155,6 @@ def train(args):
                     L,
                     step,
                 )
-                if test_env is not None:
-                    evaluate(
-                        test_env,
-                        agent,
-                        video,
-                        algo_config.eval_episodes,
-                        L,
-                        step,
-                        test_env=True,
-                    )
                 L.dump(step)
 
             # Save agent periodically

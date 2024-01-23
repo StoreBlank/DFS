@@ -12,6 +12,7 @@ env:
   ]
   frame_stack: 3
   mode: rgb
+  robust: false
   image_size: 140
   camera_id: 2
 
@@ -26,9 +27,10 @@ agent:
   projection_dim: 100
   actor_beta: 0.9
   bc_lr: 0.001
+  use_crd: true
   lambda_crd: 0.8
-  s_dims: [1024, 1024, 1024, 1024, 1024, 1024]
-  t_dims: [512, 512, 512, 512, 512, 512]
+  s_dims: [1024, 1024, 1024]
+  t_dims: [512, 512, 512]
   # crd_weight: [
   #   [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
   #   [0.0, 0.0, 0.5, 0.0, 0.0, 0.0],
@@ -38,12 +40,9 @@ agent:
   #   [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
   # ]
   crd_weight: [
-    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-    [0.0, 0.0, 0.0, 0.5, 0.0, 0.0],
-    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-    [0.0, 0.0, 0.0, 0.0, 0.0, 0.5]
+    [0.0, 0.0, 0.0],
+    [0.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0],
   ]
   feat_dim: ${algo.feature_dim}
   nce_k: 4096
@@ -51,6 +50,15 @@ agent:
   T: 0.07
   # T: 10
   momentum: 0.5
+  use_edge_sim: true
+  lambda_es: 0.8
+  es_weight: [
+    [0.3, 0.0, 0.0],
+    [0.0, 0.3, 0.0],
+    [0.0, 0.0, 0.4],
+  ]
+  es_size: 128
+  es_normalize: true
   # whether to store the contrastive memory in gpu
   # in gpu will consume 10G+ memory, but in cpu will consume 10 times more time
   contrastive_memory_in_gpu: true
@@ -59,18 +67,18 @@ agent:
 
 expert:
   model_paths: {
-    'button-press-topdown-v2': ./ckpts/multitask/button-press-topdown-v2.pt,
-    'drawer-close-v2': ./ckpts/multitask/drawer-close-v2.pt,
-    'drawer-open-v2': ./ckpts/multitask/drawer-open-v2.pt,
-    'window-close-v2': ./ckpts/multitask/window-close-v2.pt,
-    'window-open-v2': ./ckpts/multitask/window-open-v2.pt,
+    'button-press-topdown-v2': ./ckpts/multitask_robust/button-press-topdown-v2.pt,
+    'drawer-close-v2': ./ckpts/multitask_robust/drawer-close-v2.pt,
+    'drawer-open-v2': ./ckpts/multitask_robust/drawer-open-v2.pt,
+    'window-close-v2': ./ckpts/multitask_robust/window-close-v2.pt,
+    'window-open-v2': ./ckpts/multitask_robust/window-open-v2.pt,
   }
   buffer_paths: {
-    'button-press-topdown-v2': ./buffers/multitask/button-press-topdown-v2.pkl,
-    'drawer-close-v2': ./buffers/multitask/drawer-close-v2.pkl,
-    'drawer-open-v2': ./buffers/multitask/drawer-open-v2.pkl,
-    'window-close-v2': ./buffers/multitask/window-close-v2.pkl,
-    'window-open-v2': ./buffers/multitask/window-open-v2.pkl,
+    'button-press-topdown-v2': ./buffers/multitask_2/button-press-topdown-v2.pkl,
+    'drawer-close-v2': ./buffers/multitask_2/drawer-close-v2.pkl,
+    'drawer-open-v2': ./buffers/multitask_2/drawer-open-v2.pkl,
+    'window-close-v2': ./buffers/multitask_2/window-close-v2.pkl,
+    'window-open-v2': ./buffers/multitask_2/window-open-v2.pkl,
   }
 
 algo:

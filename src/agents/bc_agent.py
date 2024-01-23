@@ -308,18 +308,31 @@ class CrdBC(BC):
             m.RLProjection(head_cnn.out_shape, agent_config.projection_dim),
         )
         self.use_aug = agent_config.use_aug
+        self.use_crd = agent_config.use_crd
+        self.use_edge_sim = agent_config.use_edge_sim
 
         self.actor = m.VisualActor(actor_encoder, action_shape, agent_config.hidden_dim).cuda()
 
         self.expert = None
-        self.criterion = m.CRDLoss(agent_config).cuda()
+        if self.use_crd:
+            self.lambda_crd = agent_config.lambda_crd
+            self.criterion_crd = m.CRDLoss(agent_config)
+        if self.use_edge_sim:
+            self.lambda_es = agent_config.lambda_es
+            self.criterion_es = m.EdgeSimLoss(agent_config)
 
-        self.optimizer = torch.optim.Adam(
-            nn.ModuleList([self.actor, self.criterion]).parameters(),
-            lr=agent_config.bc_lr,
-            betas=(agent_config.actor_beta, 0.999),
-        )
-        self.lambda_crd = agent_config.lambda_crd
+        if self.use_crd:
+            self.optimizer = torch.optim.Adam(
+                nn.ModuleList([self.actor, self.criterion]).parameters(),
+                lr=agent_config.bc_lr,
+                betas=(agent_config.actor_beta, 0.999),
+            )
+        else:
+            self.optimizer = torch.optim.Adam(
+                self.actor.parameters(),
+                lr=agent_config.bc_lr,
+                betas=(agent_config.actor_beta, 0.999),
+            )
 
         self.visual_contrastive_task = agent_config.visual_contrastive_task
 
@@ -333,11 +346,22 @@ class CrdBC(BC):
         """
         release mode, get rid of expert and crd criterion, for store
         """
+        expert = self.expert
         self.expert = None
-        self.criterion = None
+        if not self.use_crd:
+            return [expert]
+        else:
+            criterion_crd = self.criterion_crd
+            self.criterion_crd = None
+            return [expert, criterion_crd]
+
+    def reload_for_training(self, reloads):
+        self.expert = reloads[0]
+        if self.use_crd:
+            self.criterion_crd = reloads[1]
 
     def prefill_memory(self, replay_buffer):
-        self.criterion.memory.prefill(self.expert, replay_buffer)
+        self.criterion_crd.memory.prefill(self.expert, replay_buffer)
 
     def update_actor(self, obs, idxs, L=None, step=None):
         if self.visual_contrastive_task:
@@ -346,20 +370,20 @@ class CrdBC(BC):
         
         obs_visual = obs['visual']
         obs_state = obs['state']
+        loss = 0
 
-        mu_pred, _, _, log_std_pred, feats_s = self.actor(obs_visual, False, False, False, True, True)
-        # feat_s = feats_s[-1]
+        mu_pred, _, _, log_std_pred, feats_s = self.actor(obs_visual, False, False, False, True, False)
         with torch.no_grad():
-            mu_target, _, _, log_std_target, feats_t = self.expert.actor(obs_state, False, False, True, True)
-            # feat_t = feats_t[-1]
+            mu_target, _, _, log_std_target, feats_t = self.expert.actor(obs_state, False, False, True, False)
 
-        # loss_kl = kl_divergence(
-        #     torch.atanh(mu_pred), log_std_pred, torch.atanh(mu_target), log_std_target
-        # ).mean()
         loss_kl = (mu_pred - mu_target).pow(2).mean() + (log_std_pred - log_std_target).pow(2).mean()
-        loss_crd, _ = self.criterion(feats_s, feats_t, idxs)
-        loss = loss_kl + self.lambda_crd * loss_crd
-
+        loss += loss_kl
+        if self.use_crd:
+            loss_crd, _ = self.criterion_crd(feats_s, feats_t, idxs)
+            loss += self.lambda_crd * loss_crd
+        if self.use_edge_sim:
+            loss_es = self.criterion_es(feats_s, feats_t)
+            loss += self.lambda_es * loss_es
         if self.visual_contrastive_task:
             encoder_feature_auged = self.actor(obs_visual_auged, encoder_task=True)
             encoder_feature_origin = self.actor(obs_visual, encoder_task=True)
@@ -369,7 +393,10 @@ class CrdBC(BC):
         if L is not None:
             L.log('train_crd/actor_loss', loss, step)
             L.log('train_crd/kl_loss', loss_kl, step)
-            L.log('train_crd/crd_loss', loss_crd, step)
+            if self.use_crd:
+                L.log('train_crd/crd_loss', loss_crd, step)
+            if self.use_edge_sim:
+                L.log('train_crd/es_loss', loss_es, step)
             if self.visual_contrastive_task:
                 L.log('train_crd/encoder_contrast_loss', loss_contrastive_task, step)
 
@@ -416,18 +443,31 @@ class MultitaskCrdBC(MultitaskBC):
             m.RLProjection(head_cnn.out_shape, agent_config.projection_dim),
         )
         self.use_aug = agent_config.use_aug
+        self.use_crd = agent_config.use_crd
+        self.use_edge_sim = agent_config.use_edge_sim
 
         self.actor = m.MultitaskVisualActor(actor_encoder, agent_config.num_task, action_shape, agent_config.hidden_dim).cuda()
 
         self.experts = []
-        self.criterions = [m.CRDLoss(agent_config) for _ in range(agent_config.num_task)]
+        if self.use_crd:
+            self.lambda_crd = agent_config.lambda_crd
+            self.criterions_crd = [m.CRDLoss(agent_config) for _ in range(agent_config.num_task)]
+        if self.use_edge_sim:
+            self.lambda_es = agent_config.lambda_es
+            self.criterions_es = [m.EdgeSimLoss(agent_config) for _ in range(agent_config.num_task)]
 
-        self.optimizer = torch.optim.Adam(
-            nn.ModuleList([self.actor] + self.criterions).parameters(),
-            lr=agent_config.bc_lr,
-            betas=(agent_config.actor_beta, 0.999),
-        )
-        self.lambda_crd = agent_config.lambda_crd
+        if self.use_crd:
+            self.optimizer = torch.optim.Adam(
+                nn.ModuleList([self.actor] + self.criterions_crd).parameters(),
+                lr=agent_config.bc_lr,
+                betas=(agent_config.actor_beta, 0.999),
+            )
+        else:
+            self.optimizer = torch.optim.Adam(
+                self.actor.parameters(),
+                lr=agent_config.bc_lr,
+                betas=(agent_config.actor_beta, 0.999),
+            )
 
         self.visual_contrastive_task = agent_config.visual_contrastive_task
 
@@ -442,30 +482,50 @@ class MultitaskCrdBC(MultitaskBC):
         """
         release mode, get rid of expert and crd criterion, for store
         """
+        experts = self.experts
         self.experts = None
-        self.criterions = None
+        if not self.use_crd:
+            return [experts]
+        else:
+            criterions_crd = self.criterions_crd
+            self.criterions_crd = None
+            return [experts, criterions_crd]
+
+    def reload_for_training(self, reloads):
+        self.experts = reloads[0]
+        if self.use_crd:
+            self.criterions_crd = reloads[1]
 
     def prefill_memory(self, replay_buffers):
         for task_id, replay_buffer in enumerate(replay_buffers):
-            self.criterions[task_id].memory.prefill(self.experts[task_id], replay_buffer)
+            self.criterions_crd[task_id].memory.prefill(self.experts[task_id], replay_buffer)
 
     def update_actor(self, obs, task_ids, idxs, L=None, step=None):
         obs_visual = obs["visual"]
         obs_state = obs["state"]
+        loss = 0
 
-        mu_pred, _, _, log_std_pred, feats_s = self.actor(obs_visual, task_ids, False, False, False, True, True)
+        mu_pred, _, _, log_std_pred, feats_s = self.actor(obs_visual, task_ids, False, False, False, True, False)
         with torch.no_grad():
             # now only support the same task_id
-            mu_target, _, _, log_std_target, feats_t = self.experts[task_ids[0]].actor(obs_state, False, False, True, True)
+            mu_target, _, _, log_std_target, feats_t = self.experts[task_ids[0]].actor(obs_state, False, False, True, False)
 
         loss_kl = (mu_pred - mu_target).pow(2).mean() + (log_std_pred - log_std_target).pow(2).mean()
-        loss_crd, _ = self.criterions[task_ids[0]](feats_s, feats_t, idxs)
-        loss = loss_kl + self.lambda_crd * loss_crd
+        loss += loss_kl
+        if self.use_crd:
+            loss_crd, _ = self.criterions_crd[task_ids[0]](feats_s, feats_t, idxs)
+            loss += self.lambda_crd * loss_crd
+        if self.use_edge_sim:
+            loss_es = self.criterions_es[task_ids[0]](feats_s, feats_t)
+            loss += self.lambda_es * loss_es
 
         if L is not None:
             L.log('train_crd/actor_loss', loss, step)
             L.log('train_crd/kl_loss', loss_kl, step)
-            L.log('train_crd/crd_loss', loss_crd, step)
+            if self.use_crd:
+                L.log('train_crd/crd_loss', loss_crd, step)
+            if self.use_edge_sim:
+                L.log('train_crd/es_loss', loss_es, step)
 
         self.optimizer.zero_grad()
         loss.backward()

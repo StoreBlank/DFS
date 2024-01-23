@@ -932,3 +932,73 @@ class HalfProjCRDLoss(nn.Module):
         # t_loss = contrast_loss(out_t, self.residual)
         # loss = s_loss + t_loss
         return loss, losses
+
+
+# Calculate Gram matrix
+def gram(x):
+    bs, L = x.size()
+    x_T = x.transpose(0, 1)
+    G = x @ x_T / (bs * L)
+    return G
+
+# normalize 2d tensor such that each element has unit norm
+def normalize_2d(x):
+    mean = x.mean()
+    std = (x - mean).pow(2).mean().sqrt()
+    return (x - mean) / std
+
+
+class EdgeSimLoss(nn.Module):
+    """
+    Edge similarity loss function
+    """
+    def __init__(self, opt):
+        super().__init__()
+        self.es_weight = opt.es_weight
+        self.es_size = opt.es_size
+        self.mean_s = -np.ones(len(opt.s_dims))
+        self.std_s = -np.ones(len(opt.s_dims))
+        self.mean_t = -np.ones(len(opt.t_dims))
+        self.std_t = -np.ones(len(opt.t_dims))
+        self.es_normalize = opt.es_normalize
+
+    def single_layer_loss(self, f_s, f_t, s_layer, t_layer):
+        # choose a random subset of size *size* of the batch
+        idx = np.random.choice(f_s.shape[0], self.es_size, replace=False)
+        f_s = f_s[idx]
+        f_t = f_t[idx]
+
+        # calculate gram matrix
+        G_s = gram(f_s)
+        G_t = gram(f_t)
+
+        if self.mean_s[s_layer] < 0:
+            self.mean_s[s_layer] = G_s.mean().detach().cpu().numpy()
+        if self.std_s[s_layer] < 0:
+            self.std_s[s_layer] = (G_s - G_s.mean()).pow(2).mean().sqrt().detach().cpu().numpy()
+        if self.mean_t[t_layer] < 0:
+            self.mean_t[t_layer] = G_t.mean().detach().cpu().numpy()
+        if self.std_t[t_layer] < 0:
+            self.std_t[t_layer] = (G_t - G_t.mean()).pow(2).mean().sqrt().detach().cpu().numpy()
+
+        if self.es_normalize:
+            G_s = normalize_2d(G_s)
+            G_t = normalize_2d(G_t)
+        else:
+            G_s = (G_s - self.mean_s[s_layer]) / self.std_s[s_layer]
+            G_t = (G_t - self.mean_t[t_layer]) / self.std_t[t_layer]
+
+        set_trace()
+        # calculate loss
+        loss = F.mse_loss(G_s, G_t)
+
+        return loss
+
+    def forward(self, fs_s, fs_t):
+        loss = 0
+        for i in range(len(fs_s)):
+            for j in range(len(fs_t)):
+                if self.es_weight[i][j] != 0:
+                    layer_loss = self.single_layer_loss(fs_s[i], fs_t[j], i, j)
+                    loss += self.es_weight[i][j] * layer_loss
+        return loss

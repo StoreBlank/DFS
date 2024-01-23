@@ -7,7 +7,7 @@ import random
 import metaworld
 from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
 from env.wrapper_metaworld import wrap
-from agents.bc_agent import BC
+from agents.bc_agent import CrdBC
 from logger import Logger
 from datetime import datetime
 from video import VideoRecorder
@@ -44,6 +44,7 @@ def evaluate(env, agent, video, num_episodes, L, step, test_env=False):
 
     return np.mean(episode_rewards)
 
+
 def train(args):
     # parse config
     env_config = args.env
@@ -54,7 +55,7 @@ def train(args):
         algo_config.image_crop_size = env_config.image_size
     if not hasattr(env_config, 'camera_id'):
         env_config.camera_id = 0
-
+    
     # Set seed
     utils.set_seed_everywhere(algo_config.seed)
 
@@ -109,6 +110,9 @@ def train(args):
     # Prepare agent
     assert torch.cuda.is_available(), "must have cuda enabled"
     replay_buffer = utils.ReplayBuffer.load(expert_config.buffer_path)
+    # teacher
+    teacher = torch.load(expert_config.model_path)
+    teacher.eval()
     # student
     env_temp = initialize_env(env_id)
     cropped_visual_obs_shape = (
@@ -116,13 +120,15 @@ def train(args):
         algo_config.image_crop_size,
         algo_config.image_crop_size,
     )
-    agent = BC(
+    agent = CrdBC(
         agent_obs_shape=cropped_visual_obs_shape,
         action_shape=env_temp.action_space.shape,
         agent_config=agent_config,
     )
     env_temp.close()
-    
+    agent.set_expert(teacher)
+    # agent.prefill_memory(replay_buffer)
+
     # train
     print("Training student")
     start_step = 0
@@ -151,7 +157,10 @@ def train(args):
 
         # Save agent periodically
         if step > start_step and step % algo_config.save_freq == 0:
+            # criterions not saved
+            reloads = agent.release()
             torch.save(agent, os.path.join(model_dir, f"{step}.pt"))
+            agent.reload_for_training(reloads)
 
         # Run training update
         agent.update(replay_buffer, L, step)
