@@ -1,8 +1,9 @@
 algorithm: vanilla_state_sac
 
 env:
-  category: metaworld
-  env_id: pick-place-v2
+  category: custom_metaworld
+  env_id: door-close-v2
+  random_level: 1
   frame_stack: 3
   mode: rgb
   robust: true
@@ -38,4 +39,4 @@ algo:
   image_crop_size: 140
   log_dir: logs
   save_video: true
-  use_wandb: false #
+  use_wandb: true #

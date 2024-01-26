@@ -598,9 +598,6 @@ class ContrastMemory(nn.Module):
             contrast_idx = np.random.randint(self.capacity, size=(len(idx), self.K))
         idx = np.concatenate([idx[:, None], contrast_idx], 1)
 
-        weight_s = self.memory_v1[s_layer][idx].clone()
-        weight_t = self.memory_v2[t_layer][idx].clone()
-
         # update memory
         with torch.no_grad():
             for i, ind in enumerate(idx[:, 0]):
@@ -613,6 +610,9 @@ class ContrastMemory(nn.Module):
                 t_norm = torch.linalg.norm(t_pos)
                 updated_t = t_pos / t_norm
                 self.memory_v2[t_layer][ind] = updated_t
+
+        weight_s = self.memory_v1[s_layer][idx]
+        weight_t = self.memory_v2[t_layer][idx]
 
         return weight_s, weight_t
 
@@ -817,7 +817,7 @@ class HalfProjContrastMemory(nn.Module):
             contrast_idx = np.random.randint(self.capacity, size=(len(idx), self.K))
         idx = np.concatenate([idx[:, None], contrast_idx], 1)
 
-        weight = self.memory[t_layer][idx].clone()
+        weight = self.memory[t_layer][idx]
 
         return weight
     
@@ -988,7 +988,6 @@ class EdgeSimLoss(nn.Module):
             G_s = (G_s - self.mean_s[s_layer]) / self.std_s[s_layer]
             G_t = (G_t - self.mean_t[t_layer]) / self.std_t[t_layer]
 
-        set_trace()
         # calculate loss
         loss = F.mse_loss(G_s, G_t)
 

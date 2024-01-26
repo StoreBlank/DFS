@@ -5,7 +5,7 @@ import utils
 import time
 import random
 import metaworld
-from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
+from env.custom_random_metaworld import ALL_V2_ENVIRONMENTS, ALL_TASKS
 from env.wrapper_metaworld import wrap
 from agents.sac_agent import StateSAC, VisualSAC, NoisyStateSAC
 from logger import Logger
@@ -51,25 +51,43 @@ def train(args):
     utils.set_seed_everywhere(algo_config.seed)
 
     # Initialize environments
-    if env_config.robust:
-        mt1 = metaworld.MT1(env_config.env_id)
-        env_class = mt1.train_classes[env_config.env_id]
-        def make_env():
-            env = env_class()
-            task = random.choice(mt1.train_tasks)
-            env.set_task(task)
-            env = wrap(
-                env,
-                frame_stack=env_config.frame_stack,
-                mode=env_config.mode,
-                image_size=env_config.image_size,
-                done_on_success=False,
-            )
-            return env
+    if env_config.category == 'metaworld':
+        if env_config.robust:
+            mt1 = metaworld.MT1(env_config.env_id)
+            env_class = mt1.train_classes[env_config.env_id]
+            def make_env():
+                env = env_class()
+                task = random.choice(mt1.train_tasks)
+                env.set_task(task)
+                env = wrap(
+                    env,
+                    frame_stack=env_config.frame_stack,
+                    mode=env_config.mode,
+                    image_size=env_config.image_size,
+                    done_on_success=False,
+                )
+                return env
+        else:
+            from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
+            env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_config.env_id}-goal-observable']
+            def make_env():
+                env = env_class()
+                env = wrap(
+                    env,
+                    frame_stack=env_config.frame_stack,
+                    mode=env_config.mode,
+                    image_size=env_config.image_size,
+                    done_on_success=False,
+                )
+                return env
     else:
-        env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_config.env_id}-goal-observable']
+        random_level = env_config.random_level
+        env_cls = ALL_V2_ENVIRONMENTS[env_config.env_id]
+        env_config.env_id += f'-level-{random_level}'
         def make_env():
-            env = env_class()
+            env = env_cls(random_level=random_level)
+            task = random.choice(ALL_TASKS[f'level_{random_level}']['door-close-v2'])
+            env.set_task(task)
             env = wrap(
                 env,
                 frame_stack=env_config.frame_stack,

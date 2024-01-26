@@ -1,0 +1,22 @@
+algos: {
+  'bc': experiment_records/1_26/bc.pt,
+  'crd': experiment_records/1_26/crd.pt,
+  'crd_level_2': experiment_records/1_26/crd_level_2.pt,
+  'crd_level_3': experiment_records/1_26/crd_level_3.pt,
+  'crd_one': experiment_records/1_26/crd_one.pt,
+  'no_crd': experiment_records/1_26/no_crd.pt,
+  'no_es': experiment_records/1_26/no_es.pt,
+}
+
+seed: 42
+save_video: true
+eval_episodes: 50
+# eval_episodes: 5
+log_dir: logs
+
+env:
+  env_id: door-close-v2
+  frame_stack: 3
+  mode: rgb
+  image_size: 140
+  camera_id: 2

@@ -1,8 +1,11 @@
 algos: {
   'bc': experiment_records/1_18/bc.pt,
   'crd_bc': experiment_records/1_18/crd_bc.pt,
-  'no_crd_64': experiment_records/1_23/es/no_crd_64.pt,
+  'crd_one': experiment_records/1_24/crd_one.pt,
   'crd_es_norm': experiment_records/1_24/crd_es_norm.pt,
+  'crd_es': experiment_records/1_24/crd_es.pt,
+  'no_crd_64': experiment_records/1_23/es/no_crd_64.pt,
+  'no_crd_128': experiment_records/1_24/no_crd_128.pt,
 }
 
 seed: 42

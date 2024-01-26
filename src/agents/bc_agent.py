@@ -72,9 +72,10 @@ class BC(SAC):
         mu_pred, _, _, log_std_pred = self.actor(obs_visual, False, False)
 
         # Mention the squashing
-        loss = kl_divergence(
-            torch.atanh(mu_pred), log_std_pred, torch.atanh(mu_target), log_std_target
-        ).mean()
+        # loss = kl_divergence(
+        #     torch.atanh(mu_pred), log_std_pred, torch.atanh(mu_target), log_std_target
+        # ).mean()
+        loss = (mu_pred - mu_target).pow(2).mean() + (log_std_pred - log_std_target).pow(2).mean()
 
         if self.visual_contrastive_task:
             encoder_feature_auged = self.actor(obs_visual_auged, encoder_task=True)
@@ -323,7 +324,7 @@ class CrdBC(BC):
 
         if self.use_crd:
             self.optimizer = torch.optim.Adam(
-                nn.ModuleList([self.actor, self.criterion]).parameters(),
+                nn.ModuleList([self.actor, self.criterion_crd]).parameters(),
                 lr=agent_config.bc_lr,
                 betas=(agent_config.actor_beta, 0.999),
             )
@@ -363,7 +364,7 @@ class CrdBC(BC):
     def prefill_memory(self, replay_buffer):
         self.criterion_crd.memory.prefill(self.expert, replay_buffer)
 
-    def update_actor(self, obs, idxs, L=None, step=None):
+    def update_actor(self, obs, mu_target, log_std_target, idxs, L=None, step=None):
         if self.visual_contrastive_task:
             obs_visual_auged = obs[1]
             obs = obs[0]
@@ -374,7 +375,7 @@ class CrdBC(BC):
 
         mu_pred, _, _, log_std_pred, feats_s = self.actor(obs_visual, False, False, False, True, False)
         with torch.no_grad():
-            mu_target, _, _, log_std_target, feats_t = self.expert.actor(obs_state, False, False, True, False)
+            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, False)
 
         loss_kl = (mu_pred - mu_target).pow(2).mean() + (log_std_pred - log_std_target).pow(2).mean()
         loss += loss_kl
@@ -407,15 +408,15 @@ class CrdBC(BC):
     def update(self, replay_buffer, L, step):
         if self.use_aug:
             if self.use_aug == "weak":
-                obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_aug_sample(return_idxs=True)
+                obs, _, mu_target, log_std_target, _, _, _, idxs = replay_buffer.behavior_aug_sample(return_idxs=True)
             elif self.use_aug == "strong":
                 # print("strong aug")
-                obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_costom_aug_sample(utils.add_random_color_patch, utils.gaussian, utils.random_conv, utils.random_crop, utils.random_affine, return_idxs=True)
+                obs, _, mu_target, log_std_target, _, _, _, idxs = replay_buffer.behavior_costom_aug_sample(utils.add_random_color_patch, utils.gaussian, utils.random_conv, utils.random_crop, utils.random_affine, return_idxs=True)
             else:
                 raise NotImplementedError("use_aug in config can be None or 'weak' or 'strong' ")
         else:
             # print("no_aug")
-            obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_sample(return_idxs=True)
+            obs, _, mu_target, log_std_target, _, _, _, idxs = replay_buffer.behavior_sample(return_idxs=True)
         
         if self.visual_contrastive_task:
             # later put this into buffer
@@ -426,7 +427,7 @@ class CrdBC(BC):
             obs_visual_contrastive = utils.random_affine(obs_visual_contrastive)
             obs=[obs, obs_visual_contrastive]
 
-        self.update_actor(obs, idxs, L, step)
+        self.update_actor(obs, mu_target, log_std_target, idxs, L, step)
 
 
 class MultitaskCrdBC(MultitaskBC):
@@ -500,7 +501,7 @@ class MultitaskCrdBC(MultitaskBC):
         for task_id, replay_buffer in enumerate(replay_buffers):
             self.criterions_crd[task_id].memory.prefill(self.experts[task_id], replay_buffer)
 
-    def update_actor(self, obs, task_ids, idxs, L=None, step=None):
+    def update_actor(self, obs, task_ids, mu_target, log_std_target, idxs, L=None, step=None):
         obs_visual = obs["visual"]
         obs_state = obs["state"]
         loss = 0
@@ -508,7 +509,7 @@ class MultitaskCrdBC(MultitaskBC):
         mu_pred, _, _, log_std_pred, feats_s = self.actor(obs_visual, task_ids, False, False, False, True, False)
         with torch.no_grad():
             # now only support the same task_id
-            mu_target, _, _, log_std_target, feats_t = self.experts[task_ids[0]].actor(obs_state, False, False, True, False)
+            _, _, _, _, feats_t = self.experts[task_ids[0]].actor(obs_state, False, False, True, False)
 
         loss_kl = (mu_pred - mu_target).pow(2).mean() + (log_std_pred - log_std_target).pow(2).mean()
         loss += loss_kl
@@ -534,20 +535,20 @@ class MultitaskCrdBC(MultitaskBC):
     def update(self, replay_buffer, task_id, L, step):
         if self.use_aug:
             if self.use_aug == "weak":
-                obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_aug_sample(return_idxs=True)
+                obs, _, mu_target, log_std_target, _, _, _, idxs = replay_buffer.behavior_aug_sample(return_idxs=True)
             elif self.use_aug == "strong":
                 # print("strong aug")
-                obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_costom_aug_sample(utils.add_random_color_patch, utils.gaussian, utils.random_conv, utils.random_crop, utils.random_affine, return_idxs=True)
+                obs, _, mu_target, log_std_target, _, _, _, idxs = replay_buffer.behavior_costom_aug_sample(utils.add_random_color_patch, utils.gaussian, utils.random_conv, utils.random_crop, utils.random_affine, return_idxs=True)
             else:
                 raise NotImplementedError("use_aug in config can be None or 'weak' or 'strong' ")
         else:
             # print("no_aug")
-            obs, _, _, _, _, _, _, idxs = replay_buffer.behavior_sample(return_idxs=True)
+            obs, _, mu_target, log_std_target, _, _, _, idxs = replay_buffer.behavior_sample(return_idxs=True)
 
         task_ids = torch.ones(replay_buffer.batch_size) * task_id
         task_ids = task_ids.long().cuda()
 
-        self.update_actor(obs, task_ids, idxs, L, step)
+        self.update_actor(obs, task_ids, mu_target, log_std_target, idxs, L, step)
 
 
 class PureCrdBC(BC):
