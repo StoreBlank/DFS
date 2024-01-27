@@ -51,7 +51,7 @@ expert:
   name: state_sac
   mode: "state" # not used
   hidden_dim: 512 # not used
-  model_path: ./ckpts/custom_metaworld/door-close-v2-level-2.pt
+  model_path: ./ckpts/custom_metaworld/door-close-v2-level-1.pt
   buffer_path: ./buffers/custom_metaworld/door-close-v2.pkl
 
 algo:

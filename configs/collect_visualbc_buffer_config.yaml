@@ -22,7 +22,7 @@ env:
   camera_id: 2
 
 agent:
-  model_path: "./ckpts/custom_metaworld/door-close-v2-level-1.pt"
+  model_path: "./ckpts/custom_metaworld/door-close-v2-level-3.pt"
 
 algo:
   seed: 42

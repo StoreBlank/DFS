@@ -566,7 +566,6 @@ class ContrastMemory(nn.Module):
             s_layers,
             t_layers,
             K,
-            T=0.07,
             momentum=0.5
         ):
         super().__init__()
@@ -579,10 +578,8 @@ class ContrastMemory(nn.Module):
         self.register_buffer('memory_v1', torch.rand(s_layers, capacity, feature_dim).mul_(2 * stdv).add_(-stdv))
         self.register_buffer('memory_v2', torch.rand(t_layers, capacity, feature_dim).mul_(2 * stdv).add_(-stdv))
 
-    def _get_and_store(
+    def _get(
             self,
-            f_s,
-            f_t,
             s_layer,
             t_layer,
             idx,
@@ -598,9 +595,22 @@ class ContrastMemory(nn.Module):
             contrast_idx = np.random.randint(self.capacity, size=(len(idx), self.K))
         idx = np.concatenate([idx[:, None], contrast_idx], 1)
 
+        weight_s = self.memory_v1[s_layer][idx]
+        weight_t = self.memory_v2[t_layer][idx]
+
+        return weight_s, weight_t
+
+    def store(
+            self,
+            f_s,
+            f_t,
+            s_layer,
+            t_layer,
+            idx,
+        ):
         # update memory
         with torch.no_grad():
-            for i, ind in enumerate(idx[:, 0]):
+            for i, ind in enumerate(idx):
                 s_pos = self.memory_v1[s_layer][ind] * self.momentum + f_s[i] * (1. - self.momentum)
                 s_norm = torch.linalg.norm(s_pos)
                 updated_s = s_pos / s_norm
@@ -611,21 +621,14 @@ class ContrastMemory(nn.Module):
                 updated_t = t_pos / t_norm
                 self.memory_v2[t_layer][ind] = updated_t
 
-        weight_s = self.memory_v1[s_layer][idx]
-        weight_t = self.memory_v2[t_layer][idx]
-
-        return weight_s, weight_t
-
     def forward(
             self,
-            f_s,
-            f_t,
             s_layer,
             t_layer,
             idx,
             contrast_idx=None
         ):
-        return self._get_and_store(f_s, f_t, s_layer, t_layer, idx, contrast_idx)
+        return self._get(s_layer, t_layer, idx, contrast_idx)
 
 
 def contrast_loss(x, residual):
@@ -694,7 +697,6 @@ class CRDLoss(nn.Module):
             len(opt.s_dims),
             len(opt.t_dims),
             opt.nce_k,
-            opt.T,
             opt.momentum
         )
         if self.memory_in_gpu:
@@ -713,9 +715,9 @@ class CRDLoss(nn.Module):
         f_t = F.normalize(f_t, dim=1)
 
         if self.memory_in_gpu:
-            weight_s, weight_t = self.memory(f_s, f_t, s_layer, t_layer, idx, contrast_idx)
+            weight_s, weight_t = self.memory(s_layer, t_layer, idx, contrast_idx)
         else:
-            weight_s, weight_t = self.memory(f_s.cpu(), f_t.cpu(), s_layer, t_layer, idx, contrast_idx)
+            weight_s, weight_t = self.memory(s_layer, t_layer, idx, contrast_idx)
             weight_s = weight_s.cuda()
             weight_t = weight_t.cuda()
 
@@ -736,6 +738,9 @@ class CRDLoss(nn.Module):
 
         s_loss = contrast_loss(out_s, self.residual)
         t_loss = contrast_loss(out_t, self.residual)
+
+        # update memory
+        self.memory.store(f_s, f_t, s_layer, t_layer, idx)
 
         return s_loss + t_loss
 
