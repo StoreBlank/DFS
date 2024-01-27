@@ -1,4 +1,4 @@
-algorithm: crd_bc
+algorithm: pure_crd
 
 env:
   category: custom_metaworld
@@ -10,17 +10,18 @@ env:
   camera_id: 2
 
 agent:
-  name: crd_bc # not used
+  name: pure_crd
   use_aug: ${algo.crop}
-  hidden_dim: 1024 
-  num_shared_layers: 11 
-  num_head_layers: 0 
-  num_filters: 32 
-  projection_dim: 100 
-  actor_beta: 0.9 
-  bc_lr: 0.001 # bc
+  hidden_dim: 1024
+  num_shared_layers: 11
+  num_head_layers: 0
+  num_filters: 32
+  projection_dim: 100
+  actor_beta: 0.9
+  bc_lr: 0.001 # bc for last layer
   use_crd: true
-  lambda_crd: 0.8 # crd weight
+  lambda_crd: 1.0 # crd weight
+  crd_lr: 0.001
   s_dims: [1024, 1024, 1024]
   t_dims: [512, 512, 512]
   crd_weight: [
@@ -34,7 +35,7 @@ agent:
   T: 0.07
   momentum: 0.5
   use_edge_sim: false
-  lambda_es: 0.8
+  lambda_es: 1.0
   es_weight: [
     [0.3, 0.0, 0.0],
     [0.0, 0.3, 0.0],
@@ -44,8 +45,8 @@ agent:
   es_normalize: true
   # whether to store the contrastive memory in gpu
   contrastive_memory_in_gpu: true
+  use_expert_action: true
   mode: "visual" # not used
-  visual_contrastive_task: false # if set true will use strong aug for auged contrastive
 
 expert:
   name: state_sac
@@ -56,12 +57,14 @@ expert:
 
 algo:
   seed: 42
-  train_steps: 100000 # 500000
+  agent_feat_steps: 100000 # finetune
+  # agent_feat_steps: 1
+  feat_num: 1000
+  agent_last_layer_steps: 10000 # finetune
+  # agent_last_layer_steps: 5
+  agent_eval_freq: 2000
   batch_size: 128
-  save_freq: 20000
-  eval_freq: 10000
-  # eval_episodes: 1
-  eval_episodes: 0
+  eval_episodes: 1
   feature_dim: 512
   crop: weak
   image_crop_size: 124

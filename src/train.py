@@ -6,6 +6,7 @@ from algorithms.train_vanilla_bc import train as train_bc
 from algorithms.train_multitask_bc import train as train_multitask_bc
 from algorithms.train_crd_bc import train as train_crd_bc
 from algorithms.train_multitask_crd_bc import train as train_multitask_crd_bc
+from algorithms.train_pure_crd import train as train_pure_crd
 from omegaconf import OmegaConf
 
 os.environ["MUJOCO_GL"] = "egl"
@@ -32,6 +33,8 @@ def main(cfg):
         train_crd_bc(cfg)
     if cfg.algorithm == "multitask_crd_bc":
         train_multitask_crd_bc(cfg)
+    if cfg.algorithm == "pure_crd":
+        train_pure_crd(cfg)
     if cfg.algo.use_wandb:
         wandb.finish()
 

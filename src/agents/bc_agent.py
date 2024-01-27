@@ -364,7 +364,7 @@ class CrdBC(BC):
     def prefill_memory(self, replay_buffer):
         self.criterion_crd.memory.prefill(self.expert, replay_buffer)
 
-    def update_actor(self, obs, mu_target, log_std_target, idxs, L=None, step=None):
+    def update_actor(self, obs, _, __, idxs, L=None, step=None):
         if self.visual_contrastive_task:
             obs_visual_auged = obs[1]
             obs = obs[0]
@@ -375,7 +375,7 @@ class CrdBC(BC):
 
         mu_pred, _, _, log_std_pred, feats_s = self.actor(obs_visual, False, False, False, True, False)
         with torch.no_grad():
-            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, False)
+            mu_target, _, _, log_std_target, feats_t = self.expert.actor(obs_state, False, False, True, False)
 
         loss_kl = (mu_pred - mu_target).pow(2).mean() + (log_std_pred - log_std_target).pow(2).mean()
         loss += loss_kl
@@ -565,17 +565,32 @@ class PureCrdBC(BC):
             m.RLProjection(head_cnn.out_shape, agent_config.projection_dim),
         )
         self.use_aug = agent_config.use_aug
+        self.use_crd = agent_config.use_crd
+        self.use_edge_sim = agent_config.use_edge_sim
+        self.use_expert_action = agent_config.use_expert_action
 
         self.actor = m.VisualActor(actor_encoder, action_shape, agent_config.hidden_dim).cuda()
 
         self.expert = None
-        self.criterion = m.CRDLoss(agent_config).cuda()
+        if self.use_crd:
+            self.lambda_crd = agent_config.lambda_crd
+            self.criterion_crd = m.CRDLoss(agent_config)
+        if self.use_edge_sim:
+            self.lambda_es = agent_config.lambda_es
+            self.criterion_es = m.EdgeSimLoss(agent_config)
 
-        self.feature_optimizer = torch.optim.Adam(
-            nn.ModuleList(self.actor.feature_layers() + [self.criterion]).parameters(),
-            lr=agent_config.crd_lr,
-            betas=(agent_config.actor_beta, 0.999),
-        )
+        if self.use_crd:
+            self.feature_optimizer = torch.optim.Adam(
+                nn.ModuleList(self.actor.feature_layers() + [self.criterion_crd]).parameters(),
+                lr=agent_config.crd_lr,
+                betas=(agent_config.actor_beta, 0.999),
+            )
+        else:
+            self.feature_optimizer = torch.optim.Adam(
+                self.actor.feature_layers().parameters(),
+                lr=agent_config.crd_lr,
+                betas=(agent_config.actor_beta, 0.999),
+            )
         self.last_layer_optimizer = torch.optim.Adam(
             nn.ModuleList(self.actor.last_layer()).parameters(),
             lr=agent_config.bc_lr,
@@ -592,11 +607,22 @@ class PureCrdBC(BC):
         """
         release mode, get rid of expert and crd criterion, for store
         """
+        expert = self.expert
         self.expert = None
-        self.criterion = None
+        if not self.use_crd:
+            return [expert]
+        else:
+            criterion_crd = self.criterion_crd
+            self.criterion_crd = None
+            return [expert, criterion_crd]
+
+    def reload_for_training(self, reloads):
+        self.expert = reloads[0]
+        if self.use_crd:
+            self.criterion_crd = reloads[1]
 
     def prefill_memory(self, replay_buffer):
-        self.criterion.memory.prefill(self.expert, replay_buffer)
+        self.criterion_crd.memory.prefill(self.expert, replay_buffer)
 
     def update(self, replay_buffer, L, step):
         if self.use_aug:
@@ -606,18 +632,25 @@ class PureCrdBC(BC):
 
         obs_visual = obs['visual']
         obs_state = obs['state']
+        loss = 0
 
-        _, _, _, _, feats_s = self.actor(obs_visual, False, False, False, True, True)
-        # feat_s = feats_s[-1]
+        _, _, _, _, feats_s = self.actor(obs_visual, False, False, False, True, False)
         with torch.no_grad():
-            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, True)
-            # feat_t = feats_t[-1]
+            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, False)
 
-        loss, losses = self.criterion(feats_s, feats_t, idxs)
+        if self.use_crd:
+            loss_crd, _ = self.criterion_crd(feats_s, feats_t, idxs)
+            loss += self.lambda_crd * loss_crd
+        if self.use_edge_sim:
+            loss_es = self.criterion_es(feats_s, feats_t)
+            loss += self.lambda_es * loss_es
 
         if L is not None:
-            L.log('train/pure_crd_crd_loss', loss, step)
-            L.log('train/pure_crd_crd_loss_details', losses, step)
+            L.log('train/pure_crd_loss', loss, step)
+            if self.use_crd:
+                L.log('train/pure_crd_crd_loss', loss_crd, step)
+            if self.use_edge_sim:
+                L.log('train/pure_crd_es_loss', loss_es, step)
 
         self.feature_optimizer.zero_grad()
         loss.backward()
@@ -632,18 +665,18 @@ class PureCrdBC(BC):
         obs_state = obs['state']
 
         with torch.no_grad():
-            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, True)
+            _, _, _, _, feats_t = self.expert.actor(obs_state, False, False, True, False)
             # feat_t = self.criterion.embed_t(feat_t)
             # feat_t = F.normalize(feat_t, dim=1)
             for i, feat_t in enumerate(feats_t):
-                feats_t[i] = self.criterion.embeds_t[i](feat_t)
+                feats_t[i] = self.criterion_crd.embeds_t[i](feat_t)
                 feats_t[i] = F.normalize(feats_t[i], dim=1)
                 feats_t[i] = feats_t[i].cpu().detach().numpy()
-            _, _, _, _, feats_s = self.actor(obs_visual, False, False, False, True, True)
+            _, _, _, _, feats_s = self.actor(obs_visual, False, False, False, True, False)
             # feat_s = self.criterion.embed_s(feat_s)
             # feat_s = F.normalize(feat_s, dim=1)
             for i, feat_s in enumerate(feats_s):
-                feats_s[i] = self.criterion.embeds_s[i](feat_s)
+                feats_s[i] = self.criterion_crd.embeds_s[i](feat_s)
                 feats_s[i] = F.normalize(feats_s[i], dim=1)
                 feats_s[i] = feats_s[i].cpu().detach().numpy()
 
@@ -659,9 +692,12 @@ class PureCrdBC(BC):
         else:
             obs, _, mu_target, log_std_target, _, _, _ = replay_buffer.behavior_sample()
 
+        obs_state = obs["state"]
         obs_visual = obs["visual"]
-        # debug
-        # set_trace()
+
+        if self.use_expert_action:
+            with torch.no_grad():
+                mu_target, _, _, log_std_target = self.expert.actor(obs_state, False, False)
 
         mu_pred, _, _, log_std_pred = self.actor(obs_visual, False, False)
 

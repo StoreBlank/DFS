@@ -7,10 +7,12 @@ import random
 import metaworld
 from env.custom_random_metaworld import ALL_V2_ENVIRONMENTS, ALL_TASKS
 from env.wrapper_metaworld import wrap
-from agents.bc_agent import CrdBC
+from agents.bc_agent import PureCrdBC
 from logger import Logger
 from datetime import datetime
 from video import VideoRecorder
+from matplotlib import pyplot as plt
+from sklearn.manifold import TSNE
 from ipdb import set_trace
 
 
@@ -45,6 +47,22 @@ def evaluate(env, agent, video, num_episodes, L, step, test_env=False):
     return np.mean(episode_rewards)
 
 
+def feature_show(agent, buffer, feat_num, save_path):
+    feats_s, feats_t = agent.sample_feats(buffer, n=feat_num)
+    print("Begin fitting")
+    # tsne = TSNE(n_components=2, random_state=0)
+    # feats_reduction = tsne.fit_transform(np.concatenate((feat_s, feat_t), axis=0))
+    # plt.scatter(feats_reduction[:feat_num, 0], feats_reduction[:feat_num, 1], c='r')
+    # plt.scatter(feats_reduction[feat_num:, 0], feats_reduction[feat_num:, 1], c='b')
+    # plt.savefig(save_path)
+    for i in range(len(feats_t)):
+        tsne = TSNE(n_components=2, random_state=0)
+        feats_reduction = tsne.fit_transform(np.concatenate((feats_s[i], feats_t[i]), axis=0))
+        plt.scatter(feats_reduction[:feat_num, 0], feats_reduction[:feat_num, 1], c='r')
+        plt.scatter(feats_reduction[feat_num:, 0], feats_reduction[feat_num:, 1], c='b')
+        plt.savefig(save_path.replace(".png", f"_{i}.png"))
+
+
 def train(args):
     # parse config
     env_config = args.env
@@ -55,7 +73,7 @@ def train(args):
         algo_config.image_crop_size = env_config.image_size
     if not hasattr(env_config, 'camera_id'):
         env_config.camera_id = 0
-    
+
     # Set seed
     utils.set_seed_everywhere(algo_config.seed)
 
@@ -130,6 +148,7 @@ def train(args):
     ), "specified working directory already exists"
     utils.make_dir(work_dir)
     model_dir = utils.make_dir(os.path.join(work_dir, "model"))
+    feature_dir = utils.make_dir(os.path.join(work_dir, "feature"))
     video_dir = utils.make_dir(os.path.join(work_dir, "video"))
     video = VideoRecorder(
         video_dir if algo_config.save_video else None, height=448, width=448, camera_id=env_config.camera_id
@@ -149,28 +168,50 @@ def train(args):
         algo_config.image_crop_size,
         algo_config.image_crop_size,
     )
-    agent = CrdBC(
+    agent = PureCrdBC(
         agent_obs_shape=cropped_visual_obs_shape,
         action_shape=env_temp.action_space.shape,
         agent_config=agent_config,
     )
     env_temp.close()
     agent.set_expert(teacher)
-    # agent.prefill_memory(replay_buffer)
 
-    # train
-    print("Training student")
-    start_step = 0
+    # train features
+    print("===============Training agent features===============")
     L = Logger(work_dir, use_wandb=algo_config.use_wandb)
     start_time = time.time()
-    for step in range(start_step, algo_config.train_steps + 1):
-        if step > start_step:
-            L.log("train/duration", time.time() - start_time, step)
-            start_time = time.time()
-            L.dump(step)
+    for step in range(algo_config.agent_feat_steps + 1):
+        L.log("train/pure_crd_feat_duration", time.time() - start_time, step)
+        start_time = time.time()
+        L.dump(step)
 
-        # Evaluate agent periodically
-        if step % algo_config.eval_freq == 0:
+        if step <= 100 and step % 10 == 0:
+            print("Saving features")
+            feature_show(agent, replay_buffer, algo_config.feat_num, os.path.join(feature_dir, f"agent_{step}.png"))
+
+        agent.update(replay_buffer, L, step)
+    
+    # final features
+    print("Saving features")
+    feature_show(agent, replay_buffer, algo_config.feat_num, os.path.join(feature_dir, f"agent.png"))
+    print("Agent features done")
+
+    # save
+    reloads = agent.release()
+    torch.save(agent, os.path.join(model_dir, "pure_no_last.pt"))
+    agent.reload_for_training(reloads)
+
+    # agent last layer
+    print("===============Training agent last layer===============")
+    # freeze agent features
+    agent.actor.freeze_feature_layers()
+    start_time = time.time()
+    for step in range(algo_config.agent_last_layer_steps + 1):
+        L.log("train/pure_crd_last_duration", time.time() - start_time, step)
+        start_time = time.time()
+        L.dump(step)
+
+        if step % algo_config.agent_eval_freq == 0:
             print("Evaluating:", work_dir)
             env = initialize_env(env_id)
             evaluate(
@@ -184,14 +225,10 @@ def train(args):
             env.close()
             L.dump(step)
 
-        # Save agent periodically
-        if step > start_step and step % algo_config.save_freq == 0:
-            # criterions not saved
-            reloads = agent.release()
-            torch.save(agent, os.path.join(model_dir, f"{step}.pt"))
-            agent.reload_for_training(reloads)
+        agent.update_last_layer(replay_buffer, L, step)
 
-        # Run training update
-        agent.update(replay_buffer, L, step)
+    # save
+    agent.release()
+    torch.save(agent, os.path.join(model_dir, "pure_crd.pt"))
 
-    print("Completed training for", work_dir)
+    print("Done!")

@@ -1,8 +1,8 @@
 algos: {
   'bc': experiment_records/1_26/bc.pt,
-  'crd_level_1': experiment_records/1_27/crd_level_1.pt,
-  'crd_level_2': experiment_records/1_27/crd_level_2.pt,
-  'crd_level_3': experiment_records/1_27/crd_level_3.pt,
+  'use_ea': experiment_records/1_27/use_ea.pt,
+  'pure_crd': experiment_records/1_27/pure_crd.pt,
+  'pure_crd_ea': experiment_records/1_27/pure_crd_ea.pt,
 }
 
 seed: 42

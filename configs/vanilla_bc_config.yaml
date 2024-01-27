@@ -23,7 +23,7 @@ agent:
   visual_contrastive_task: false # visual task for encoder
 
 expert:
-  buffer_path: ./buffers/custom_metaworld/door-close-v2.pkl # you may need to re-collect
+  buffer_path: ./buffers/custom_metaworld/door-close-v2/door-close-v2-level-3.pkl # you may need to re-collect
 
 algo:
   seed: 42
