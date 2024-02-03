@@ -2,7 +2,7 @@ algorithm: vanilla_bc
 
 env:
   category: custom_metaworld
-  env_id: door-close-v2
+  env_id: window-close-v2
   robust: false
   frame_stack: 3
   mode: rgb
@@ -23,7 +23,7 @@ agent:
   visual_contrastive_task: false # visual task for encoder
 
 expert:
-  buffer_path: ./buffers/custom_metaworld/door-close-v2/door-close-v2-level-3.pkl # you may need to re-collect
+  buffer_path: ./buffers/custom_metaworld/diversity/window-close-v2/diversity_3.pkl # you may need to re-collect
 
 algo:
   seed: 42

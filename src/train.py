@@ -7,6 +7,7 @@ from algorithms.train_multitask_bc import train as train_multitask_bc
 from algorithms.train_crd_bc import train as train_crd_bc
 from algorithms.train_multitask_crd_bc import train as train_multitask_crd_bc
 from algorithms.train_pure_crd import train as train_pure_crd
+from algorithms.train_diffusion_policy import train as train_diffusion_policy
 from omegaconf import OmegaConf
 
 os.environ["MUJOCO_GL"] = "egl"
@@ -35,6 +36,8 @@ def main(cfg):
         train_multitask_crd_bc(cfg)
     if cfg.algorithm == "pure_crd":
         train_pure_crd(cfg)
+    if cfg.algorithm == "diffusion_policy":
+        train_diffusion_policy(cfg)
     if cfg.algo.use_wandb:
         wandb.finish()
 

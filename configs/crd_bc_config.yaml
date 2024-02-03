@@ -2,7 +2,7 @@ algorithm: crd_bc
 
 env:
   category: custom_metaworld
-  env_id: door-close-v2
+  env_id: window-close-v2
   robust: false
   frame_stack: 3
   mode: rgb
@@ -30,7 +30,7 @@ agent:
   ]
   feat_dim: ${algo.feature_dim}
   nce_k: 4096
-  n_data: 20000 # depends on the expert buffer size
+  n_data: 1000 # depends on the expert buffer size
   T: 0.07
   momentum: 0.5
   use_edge_sim: false
@@ -51,8 +51,8 @@ expert:
   name: state_sac
   mode: "state" # not used
   hidden_dim: 512 # not used
-  model_path: ./ckpts/custom_metaworld/door-close-v2/door-close-v2-level-3.pt
-  buffer_path: ./buffers/custom_metaworld/door-close-v2/door-close-v2.pkl
+  model_path: ./ckpts/custom_metaworld/window-close-v2/window-close-v2-level-4.pt
+  buffer_path: ./buffers/custom_metaworld/diversity/window-close-v2/diversity_3.pkl
 
 algo:
   seed: 42

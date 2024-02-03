@@ -82,11 +82,12 @@ def train(args):
                 return env
     else:
         random_level = env_config.random_level
-        env_cls = ALL_V2_ENVIRONMENTS[env_config.env_id]
+        env_id = env_config.env_id
+        env_cls = ALL_V2_ENVIRONMENTS[env_id]
         env_config.env_id += f'-level-{random_level}'
         def make_env():
             env = env_cls(random_level=random_level)
-            task = random.choice(ALL_TASKS[f'level_{random_level}']['door-close-v2'])
+            task = random.choice(ALL_TASKS[f'level_{random_level}'][env_id])
             env.set_task(task)
             env = wrap(
                 env,
@@ -150,11 +151,18 @@ def train(args):
             action_shape=env.action_space.shape,
             args=agent_config,
         )
+    if agent_config.load_model:
+        print(f"Loading agent weights from {agent_config.load_model} ...")
+        agent = torch.load(agent_config.load_model)
+        agent.train()
+        print("Agent loaded!")
 
     start_step, episode, episode_reward, done = 0, 0, 0, True
+    if agent_config.load_model:
+        start_step = int(agent_config.load_model.split('/')[-1].split('.')[0])
     L = Logger(work_dir, use_wandb=algo_config.use_wandb)
     start_time = time.time()
-    for step in range(start_step, algo_config.train_steps + 1):
+    for step in range(start_step, start_step + algo_config.train_steps + 1):
         if done:
             if step > start_step:
                 L.log("train/duration", time.time() - start_time, step)
@@ -200,7 +208,7 @@ def train(args):
                 action = agent.sample_action(obs)
 
         # Run training update
-        if step >= algo_config.init_steps:
+        if step >= algo_config.init_steps + start_step:
             num_updates = (
                 algo_config.init_steps if step == algo_config.init_steps else 1
             )

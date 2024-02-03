@@ -6,10 +6,24 @@ from metaworld import Task
 
 from .sawyer_xyz.sawyer_door_close_v2 import SawyerDoorCloseEnvV2
 from .sawyer_xyz.sawyer_window_close_v2 import SawyerWindowCloseEnvV2
+from .sawyer_xyz.sawyer_pick_place_v2 import SawyerPickPlaceEnvV2
+from .sawyer_xyz.sawyer_button_press_wall_v2 import SawyerButtonPressWallEnvV2
+from .sawyer_xyz.sawyer_assembly_peg_v2 import SawyerNutAssemblyEnvV2
+from .sawyer_xyz.sawyer_hammer_v2 import SawyerHammerEnvV2
+from .sawyer_xyz.sawyer_coffee_button_v2 import SawyerCoffeeButtonEnvV2
+from .sawyer_xyz.sawyer_drawer_open_v2 import SawyerDrawerOpenEnvV2
+from .sawyer_xyz.sawyer_reach_wall_v2 import SawyerReachWallEnvV2
 
 ALL_V2_ENVIRONMENTS = OrderedDict(
     (
+        ("assembly-v2", SawyerNutAssemblyEnvV2),
+        ("button-press-wall-v2", SawyerButtonPressWallEnvV2),
+        ("coffee-button-v2", SawyerCoffeeButtonEnvV2),
         ("door-close-v2", SawyerDoorCloseEnvV2),
+        ("drawer-open-v2", SawyerDrawerOpenEnvV2),
+        ("hammer-v2", SawyerHammerEnvV2),
+        ("pick-place-v2", SawyerPickPlaceEnvV2),
+        ("reach-wall-v2", SawyerReachWallEnvV2),
         ("window-close-v2", SawyerWindowCloseEnvV2),
     )
 )

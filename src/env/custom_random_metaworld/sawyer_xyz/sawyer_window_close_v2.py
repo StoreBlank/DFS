@@ -66,10 +66,16 @@ class SawyerWindowCloseEnvV2(SawyerXYZEnv):
 
         self.liftThresh = liftThresh
 
-        self._random_reset_space = Box(
-            np.array(obj_low),
-            np.array(obj_high),
-        )
+        if random_level <= 3:
+            self._random_reset_space = Box(
+                np.array(obj_low),
+                np.array(obj_high),
+            )
+        else:
+            self._random_reset_space = Box(
+                np.array(obj_low + (-0.15,)),
+                np.array(obj_high + (0.15,)),
+            )
         self.goal_space = Box(np.array(goal_low), np.array(goal_high))
 
         self.maxPullDist = 0.2
@@ -109,20 +115,17 @@ class SawyerWindowCloseEnvV2(SawyerXYZEnv):
         return np.zeros(4)
 
     def reset_model(self):
-        if self.random_level == 4:
-            z = np.random.uniform(0, 0.15)
-            w = (1 - z ** 2) ** 0.5
-            move = np.random.uniform(0.1, 0.2)
-        else:
-            z = 0.0
-            w = 1.0
-            move = 0.2
-        quaternion = np.array([w, 0.0, 0.0, z])
-
         self._reset_hand()
         self.prev_obs = self._get_curr_obs_combined_no_goal()
 
         self.obj_init_pos = self._get_state_rand_vec()
+        z = 0.0
+        if self.random_level == 4:
+            z = self.obj_init_pos[-1]
+            self.obj_init_pos = self.obj_init_pos[:-1]
+        w = (1 - z ** 2) ** 0.5
+        move = 0.2
+        quaternion = np.array([w, 0.0, 0.0, z])
 
         self._target_pos = self.obj_init_pos.copy()
         self.model.body_pos[

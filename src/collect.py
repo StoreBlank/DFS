@@ -1,6 +1,7 @@
 import os
 import hydra
 import torch
+import numpy as np
 from tqdm import tqdm
 import random
 from env.wrappers import make_env
@@ -10,8 +11,11 @@ from env.wrapper_metaworld import wrap
 import utils
 from video import VideoRecorder
 from datetime import datetime
+from ipdb import set_trace
 
 os.environ["MUJOCO_GL"] = "egl"
+
+TASK_IDX = 0
 
 
 @hydra.main(
@@ -89,17 +93,22 @@ def collect_buffer(agent, env_config, rollout_steps, batch_size, video, work_dir
     else:
         if env_config.robust:
             random_level = env_config.random_level
+            diversity = env_config.diversity
+            collect_tasks_idxs =  np.random.choice(np.arange(len(ALL_TASKS[f'level_{random_level}'][env_config.env_id])), diversity, replace=False)
+            collect_tasks = [ALL_TASKS[f'level_{random_level}'][env_config.env_id][idx] for idx in collect_tasks_idxs]
+            # rollout tasks in order
             def initialize_env(env_id):
+                global TASK_IDX
                 env_cls = ALL_V2_ENVIRONMENTS[env_id]
                 env = env_cls(random_level=random_level)
-                task = random.choice(ALL_TASKS[f'level_{random_level}']['door-close-v2'])
+                task = collect_tasks[TASK_IDX % diversity]
+                TASK_IDX += 1
                 env.set_task(task)
                 env = wrap(
                     env,
                     frame_stack=env_config.frame_stack,
                     mode=env_config.mode,
                     image_size=env_config.image_size,
-                    done_on_success=False,
                 )
                 return env
         else:
@@ -125,13 +134,13 @@ def collect_buffer(agent, env_config, rollout_steps, batch_size, video, work_dir
     start_step, episode, episode_reward, done = 0, 0, 0, True
     for step in tqdm(range(start_step, rollout_steps + 1), desc="Rollout Progress"):
         if done:
-            if episode == 1:
-                video.save(f"{env_config.env_id}.mp4")
+            if episode >= 1:
+                video.save(f"{env_config.env_id}_{episode}.mp4")
 
             env.close()
             env = initialize_env(env_config.env_id)
             obs = env.reset()
-            video.init(enabled=(episode == 0))
+            video.init(enabled=True)
             done = False
             print(f"Episode {episode} reward: {episode_reward}")
             episode_reward = 0

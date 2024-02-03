@@ -8,7 +8,6 @@ from metaworld.envs.mujoco.sawyer_xyz.sawyer_xyz_env import (
     SawyerXYZEnv,
     _assert_task_is_set,
 )
-from ipdb import set_trace
 
 
 class SawyerPickPlaceEnvV2(SawyerXYZEnv):
@@ -26,13 +25,30 @@ class SawyerPickPlaceEnvV2(SawyerXYZEnv):
         - (6/15/20) Separated reach-push-pick-place into 3 separate envs.
     """
 
-    def __init__(self, tasks=None, render_mode=None):
-        goal_low = (-0.1, 0.8, 0.05)
-        goal_high = (0.1, 0.9, 0.3)
+    def __init__(self, tasks=None, render_mode=None, random_level=1):
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
-        obj_low = (-0.1, 0.6, 0.02)
-        obj_high = (0.1, 0.7, 0.02)
+        self.random_level = random_level
+        if random_level == 1:
+            goal_low = (-0.05, 0.8, 0.05)
+            goal_high = (0.05, 0.85, 0.1)
+            obj_low = (-0.05, 0.65, 0.02)
+            obj_high = (0.05, 0.7, 0.02)
+        if random_level == 2:
+            goal_low = (-0.1, 0.8, 0.05)
+            goal_high = (0.1, 0.9, 0.2)
+            obj_low = (-0.1, 0.6, 0.02)
+            obj_high = (0.1, 0.7, 0.02)
+        if random_level == 3:
+            goal_low = (-0.2, 0.75, 0.05)
+            goal_high = (0.2, 0.9, 0.3)
+            obj_low = (-0.2, 0.55, 0.02)
+            obj_high = (0.2, 0.7, 0.02)
+        if random_level == 4:
+            goal_low = (-0.4, 0.75, 0.05)
+            goal_high = (0.4, 0.95, 0.4)
+            obj_low = (-0.4, 0.5, 0.02)
+            obj_high = (0.4, 0.7, 0.02)
 
         super().__init__(
             self.model_name,

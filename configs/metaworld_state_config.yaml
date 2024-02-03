@@ -2,8 +2,8 @@ algorithm: vanilla_state_sac
 
 env:
   category: custom_metaworld
-  env_id: door-close-v2
-  random_level: 1
+  env_id: coffee-button-v2
+  random_level: 4
   frame_stack: 3
   mode: rgb
   robust: true
@@ -12,6 +12,7 @@ env:
 
 agent:
   name: state_sac
+  load_model: null
   discount: 0.99
   init_temperature: 0.1
   hidden_dim: 512

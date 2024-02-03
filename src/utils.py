@@ -11,6 +11,9 @@ import random
 import pickle
 from omegaconf import OmegaConf
 from datetime import datetime
+from einops import rearrange
+from diffusion_policy.model.common.normalizer import LinearNormalizer
+from diffusion_policy.common.normalize_util import get_image_range_normalizer
 from ipdb import set_trace
 
 
@@ -372,97 +375,168 @@ class ReplayBuffer(object):
         return obs, actions, mus, log_stds, rewards, next_obs, not_dones
 
 
-class ContrastBuffer(ReplayBuffer):
-    """Buffer for normal transitions and corresponding features"""
-    def __init__(self, action_shape, capacity, batch_size, feature_dim, s_layers, t_layers, K, T=0.07, momentum=0.5):
-        super().__init__(action_shape, capacity, batch_size)
-        self.K = K
-        self.T = T
-        self.Z_v1 = -np.ones(s_layers)
-        self.Z_v2 = -np.ones(t_layers)
-        self.momentum = momentum
+# class ContrastBuffer(ReplayBuffer):
+#     """Buffer for normal transitions and corresponding features"""
+#     def __init__(self, action_shape, capacity, batch_size, feature_dim, s_layers, t_layers, K, T=0.07, momentum=0.5):
+#         super().__init__(action_shape, capacity, batch_size)
+#         self.K = K
+#         self.T = T
+#         self.Z_v1 = -np.ones(s_layers)
+#         self.Z_v2 = -np.ones(t_layers)
+#         self.momentum = momentum
 
-        stdv = 1. / np.sqrt(feature_dim / 3)
-        self.memory_v1 = torch.rand(s_layers, capacity, feature_dim).mul_(2 * stdv).add_(-stdv).cuda()
-        self.memory_v2 = torch.rand(t_layers, capacity, feature_dim).mul_(2 * stdv).add_(-stdv).cuda()
+#         stdv = 1. / np.sqrt(feature_dim / 3)
+#         self.memory_v1 = torch.rand(s_layers, capacity, feature_dim).mul_(2 * stdv).add_(-stdv).cuda()
+#         self.memory_v2 = torch.rand(t_layers, capacity, feature_dim).mul_(2 * stdv).add_(-stdv).cuda()
 
-    # def load_buffer(self, buffer: ReplayBuffer):
-    #     self._obses = buffer._obses
-    #     self.actions = buffer.actions
-    #     self.mus = buffer.mus
-    #     self.log_stds = buffer.log_stds
-    #     self.rewards = buffer.rewards
-    #     self.not_dones = buffer.not_dones
-    #     self.idx = buffer.idx
-    #     self.full = buffer.full
+#     # def load_buffer(self, buffer: ReplayBuffer):
+#     #     self._obses = buffer._obses
+#     #     self.actions = buffer.actions
+#     #     self.mus = buffer.mus
+#     #     self.log_stds = buffer.log_stds
+#     #     self.rewards = buffer.rewards
+#     #     self.not_dones = buffer.not_dones
+#     #     self.idx = buffer.idx
+#     #     self.full = buffer.full
 
-    @staticmethod
-    def load(file_path, opt):
-        print(f"Loading replay buffer from {file_path} ...")
-        with open(file_path, 'rb') as fi:
-            obj = pickle.load(fi)
-        print("Replay buffer loaded!")
-        contrastive_buffer = ContrastBuffer(
-            action_shape=obj.actions.shape[1:],
-            capacity=obj.capacity,
-            batch_size=obj.batch_size,
-            feature_dim=opt.feature_dim,
-            s_layers=opt.s_layers,
-            t_layers=opt.t_layers,
-            K=opt.K,
-            T=opt.T,
-            momentum=opt.momentum,
-        )
-        contrastive_buffer._obses = obj._obses
-        contrastive_buffer.actions = obj.actions
-        contrastive_buffer.mus = obj.mus
-        contrastive_buffer.log_stds = obj.log_stds
-        contrastive_buffer.rewards = obj.rewards
-        contrastive_buffer.not_dones = obj.not_dones
-        contrastive_buffer.idx = obj.idx
-        contrastive_buffer.full = obj.full
+#     @staticmethod
+#     def load(file_path, opt):
+#         print(f"Loading replay buffer from {file_path} ...")
+#         with open(file_path, 'rb') as fi:
+#             obj = pickle.load(fi)
+#         print("Replay buffer loaded!")
+#         contrastive_buffer = ContrastBuffer(
+#             action_shape=obj.actions.shape[1:],
+#             capacity=obj.capacity,
+#             batch_size=obj.batch_size,
+#             feature_dim=opt.feature_dim,
+#             s_layers=opt.s_layers,
+#             t_layers=opt.t_layers,
+#             K=opt.K,
+#             T=opt.T,
+#             momentum=opt.momentum,
+#         )
+#         contrastive_buffer._obses = obj._obses
+#         contrastive_buffer.actions = obj.actions
+#         contrastive_buffer.mus = obj.mus
+#         contrastive_buffer.log_stds = obj.log_stds
+#         contrastive_buffer.rewards = obj.rewards
+#         contrastive_buffer.not_dones = obj.not_dones
+#         contrastive_buffer.idx = obj.idx
+#         contrastive_buffer.full = obj.full
 
-        print("Contrastive wrapped!")
-        return contrastive_buffer
+#         print("Contrastive wrapped!")
+#         return contrastive_buffer
 
-    def contrast(self, f_s, f_t, s_layer, t_layer, idx, contrast_idx=None):
-        if contrast_idx is None:
-            contrast_idx = self._get_idxs((len(idx), self.K))
-        idx = np.concatenate([idx[:, None], contrast_idx], 1)
+#     def contrast(self, f_s, f_t, s_layer, t_layer, idx, contrast_idx=None):
+#         if contrast_idx is None:
+#             contrast_idx = self._get_idxs((len(idx), self.K))
+#         idx = np.concatenate([idx[:, None], contrast_idx], 1)
         
-        # teacher side
-        weight_s = self.memory_v1[s_layer][idx]
-        out_t = torch.bmm(weight_s, f_t.unsqueeze(2)).squeeze(2)
-        out_t = torch.exp(out_t / self.T)
-        # student side
-        weight_t = self.memory_v2[t_layer][idx]
-        out_s = torch.bmm(weight_t, f_s.unsqueeze(2)).squeeze(2)
-        out_s = torch.exp(out_s / self.T)
+#         # teacher side
+#         weight_s = self.memory_v1[s_layer][idx]
+#         out_t = torch.bmm(weight_s, f_t.unsqueeze(2)).squeeze(2)
+#         out_t = torch.exp(out_t / self.T)
+#         # student side
+#         weight_t = self.memory_v2[t_layer][idx]
+#         out_s = torch.bmm(weight_t, f_s.unsqueeze(2)).squeeze(2)
+#         out_s = torch.exp(out_s / self.T)
 
-        # set Z if haven't been set yet
-        # if self.Z_v1 < 0:
-        #     self.Z_v1 = out_s.mean().detach().cpu().numpy() * self.capacity
-        # if self.Z_v2 < 0:
-        #     self.Z_v2 = out_t.mean().detach().cpu().numpy() * self.capacity
-        if self.Z_v1[s_layer] < 0:
-            self.Z_v1[s_layer] = out_s.mean().detach().cpu().numpy() * self.capacity
-        if self.Z_v2[t_layer] < 0:
-            self.Z_v2[t_layer] = out_t.mean().detach().cpu().numpy() * self.capacity
+#         # set Z if haven't been set yet
+#         # if self.Z_v1 < 0:
+#         #     self.Z_v1 = out_s.mean().detach().cpu().numpy() * self.capacity
+#         # if self.Z_v2 < 0:
+#         #     self.Z_v2 = out_t.mean().detach().cpu().numpy() * self.capacity
+#         if self.Z_v1[s_layer] < 0:
+#             self.Z_v1[s_layer] = out_s.mean().detach().cpu().numpy() * self.capacity
+#         if self.Z_v2[t_layer] < 0:
+#             self.Z_v2[t_layer] = out_t.mean().detach().cpu().numpy() * self.capacity
 
-        out_s = (out_s / self.Z_v1[s_layer]).contiguous()
-        out_t = (out_t / self.Z_v2[t_layer]).contiguous()
+#         out_s = (out_s / self.Z_v1[s_layer]).contiguous()
+#         out_t = (out_t / self.Z_v2[t_layer]).contiguous()
 
-        # update memory
-        with torch.no_grad():
-            for i, ind in enumerate(idx[:, 0]):
-                s_pos = self.memory_v1[s_layer][ind] * self.momentum + f_s[i] * (1. - self.momentum)
-                s_norm = torch.linalg.norm(s_pos)
-                updated_s = s_pos / s_norm
-                self.memory_v1[s_layer][ind] = updated_s
+#         # update memory
+#         with torch.no_grad():
+#             for i, ind in enumerate(idx[:, 0]):
+#                 s_pos = self.memory_v1[s_layer][ind] * self.momentum + f_s[i] * (1. - self.momentum)
+#                 s_norm = torch.linalg.norm(s_pos)
+#                 updated_s = s_pos / s_norm
+#                 self.memory_v1[s_layer][ind] = updated_s
 
-                t_pos = self.memory_v2[t_layer][ind] * self.momentum + f_t[i] * (1. - self.momentum)
-                t_norm = torch.linalg.norm(t_pos)
-                updated_t = t_pos / t_norm
-                self.memory_v2[t_layer][ind] = updated_t
+#                 t_pos = self.memory_v2[t_layer][ind] * self.momentum + f_t[i] * (1. - self.momentum)
+#                 t_norm = torch.linalg.norm(t_pos)
+#                 updated_t = t_pos / t_norm
+#                 self.memory_v2[t_layer][ind] = updated_t
 
-        return out_s, out_t
+#         return out_s, out_t
+
+
+class DiffusionReplayBuffer(ReplayBuffer):
+    """
+    Buffer wrapper for diffusion policy
+    return (B, T, size)
+    """
+    def __init__(self, replay_buffer, horizon, n_obs_steps=3):
+        action_shape = replay_buffer.actions.shape[1:]
+        self._obses = replay_buffer._obses
+        self.n_obs_steps = n_obs_steps
+        self.horizon = horizon
+        self.batch_size = replay_buffer.batch_size
+        self.capacity = replay_buffer.capacity
+        self.full = True
+        self.actions = np.empty((replay_buffer.capacity, horizon, *action_shape), dtype=np.float32)
+        # fill actions
+        # simple implement of sequence sampler in diffusion policy
+        print("Wrapping diffusion buffer ...")
+        for i in range(self.capacity):
+            # left
+            left_pad = replay_buffer.actions[i]
+            is_left_padding = False
+            for k in range(1, n_obs_steps):
+                if i - k < 0 or (not replay_buffer.not_dones[i - k]):
+                    is_left_padding = True
+                if is_left_padding:
+                    self.actions[i][n_obs_steps - 1 - k] = left_pad
+                else:
+                    self.actions[i][n_obs_steps - 1 - k] = replay_buffer.actions[i - k]
+                    left_pad = replay_buffer.actions[i - k]
+            # right
+            right_pad = None
+            is_right_padding = False
+            for k in range(0, horizon - n_obs_steps + 1):
+                if is_right_padding:
+                    self.actions[i][n_obs_steps - 1 + k] = right_pad
+                else:
+                    self.actions[i][n_obs_steps - 1 + k] = replay_buffer.actions[i + k]
+                    right_pad = replay_buffer.actions[i + k]
+                if i + k >= self.capacity - 1 or (not replay_buffer.not_dones[i + k]):
+                    is_right_padding = True
+
+        print("Diffusion buffer wrapped!")
+
+    def __sample__(self, n=None):
+        idxs = self._get_idxs(n)
+
+        obs, _ = self._encode_obses(idxs)
+        obs['visual'] = rearrange(obs['visual'], 'b (t c) h w -> b t c h w', t=self.n_obs_steps)
+        obs_dict = {
+            'obs': {
+                'visual': torch.as_tensor(obs["visual"]).cuda().float(),
+            },
+            'action': torch.as_tensor(self.actions[idxs]).cuda(),
+        }
+
+        return obs_dict
+    
+    def sample(self, n=None):
+        obs_dict = self.__sample__(n=n)
+
+        return obs_dict
+
+    def get_normalizer(self):
+        normalizer = LinearNormalizer()
+        normalizer.fit({
+            'action': self.actions,
+        })
+        normalizer['visual'] = get_image_range_normalizer()
+        return normalizer

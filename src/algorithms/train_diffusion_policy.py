@@ -7,7 +7,7 @@ import random
 import metaworld
 from env.custom_random_metaworld import ALL_V2_ENVIRONMENTS, ALL_TASKS
 from env.wrapper_metaworld import wrap
-from agents.bc_agent import BC
+from agents.diffusion_agent import DiffusionAgent
 from logger import Logger
 from datetime import datetime
 from video import VideoRecorder
@@ -30,9 +30,22 @@ def evaluate(env, agent, video, num_episodes, L, step, test_env=False):
         video.init(enabled=(i == 0))
         done = False
         episode_reward = 0
+        # while not done:
+        #     with utils.eval_mode(agent):
+        #         action = agent.select_action(obs)
+        #     obs, reward, done, _ = env.step(action)
+        #     video.record(env)
+        #     episode_reward += reward
+        # dummy
+        k = 4
+        actions = [0, 0, 0, 0]
         while not done:
-            with utils.eval_mode(agent):
-                action = agent.select_action(obs)
+            if k == len(actions):
+                with utils.eval_mode(agent):
+                    actions = agent.select_actions(obs)
+                k = 0
+            action = actions[k]
+            k += 1
             obs, reward, done, _ = env.step(action)
             video.record(env)
             episode_reward += reward
@@ -51,8 +64,6 @@ def train(args):
     agent_config = args.agent
     expert_config = args.expert
     algo_config = args.algo
-    if not algo_config.crop:
-        algo_config.image_crop_size = env_config.image_size
     if not hasattr(env_config, 'camera_id'):
         env_config.camera_id = 0
 
@@ -140,20 +151,11 @@ def train(args):
     # Prepare agent
     assert torch.cuda.is_available(), "must have cuda enabled"
     replay_buffer = utils.ReplayBuffer.load(expert_config.buffer_path)
+    diffusion_replay_buffer = utils.DiffusionReplayBuffer(replay_buffer, agent_config.horizon, agent_config.n_obs_steps)
     # student
-    env_temp = initialize_env(env_id)
-    cropped_visual_obs_shape = (
-        env_temp.observation_space['visual'].shape[0],
-        algo_config.image_crop_size,
-        algo_config.image_crop_size,
-    )
-    agent = BC(
-        agent_obs_shape=cropped_visual_obs_shape,
-        action_shape=env_temp.action_space.shape,
-        agent_config=agent_config,
-    )
-    env_temp.close()
-    
+    agent = DiffusionAgent(agent_config)
+    agent.set_normalizer(diffusion_replay_buffer.get_normalizer())
+
     # train
     print("Training student")
     start_step = 0
@@ -185,6 +187,6 @@ def train(args):
             torch.save(agent, os.path.join(model_dir, f"{step}.pt"))
 
         # Run training update
-        agent.update(replay_buffer, L, step)
+        agent.update(diffusion_replay_buffer, L, step)
 
     print("Completed training for", work_dir)

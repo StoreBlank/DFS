@@ -13,20 +13,23 @@ algorithm: visualbc_buffer_collector
 
 env:
   category: custom_metaworld
-  env_id: door-close-v2
+  env_id: window-close-v2
   # whether randomize the task
-  robust: false
+  robust: true
+  random_level: 1
+  # how many random tasks to collect
+  diversity: 3
   frame_stack: 3
   mode: rgb
   image_size: 140
   camera_id: 2
 
 agent:
-  model_path: "./ckpts/custom_metaworld/door-close-v2-level-3.pt"
+  model_path: ./ckpts/custom_metaworld/window-close-v2/window-close-v2-level-4.pt
 
 algo:
   seed: 42
-  rollout_steps: 20000
+  rollout_steps: 1000
   batch_size: 128
   save_video: true
   log_dir: logs

@@ -10,6 +10,7 @@ import pandas as pd
 
 import utils
 from env.wrapper_metaworld import wrap
+from agents.diffusion_agent import DiffusionAgent
 from video import VideoRecorder
 from ipdb import set_trace
 
@@ -39,12 +40,27 @@ def evaluate(env_id, random_level, agent, video, num_episodes, video_name):
         done = False
         episode_reward = 0
         info = None
-        while not done:
-            with utils.eval_mode(agent):
-                action = agent.select_action(obs)
-            obs, reward, done, info = env.step(action)
-            video.record(env)
-            episode_reward += reward
+        if isinstance(agent, DiffusionAgent):
+            # dummy
+            k = 4
+            actions = [0, 0, 0, 0]
+            while not done:
+                if k == len(actions):
+                    with utils.eval_mode(agent):
+                        actions = agent.select_actions(obs)
+                    k = 0
+                action = actions[k]
+                k += 1
+                obs, reward, done, info = env.step(action)
+                video.record(env)
+                episode_reward += reward
+        else:
+            while not done:
+                with utils.eval_mode(agent):
+                    action = agent.select_action(obs)
+                obs, reward, done, info = env.step(action)
+                video.record(env)
+                episode_reward += reward
 
         video.save(f"{video_name}.mp4")
         episode_rewards.append(episode_reward)
@@ -73,6 +89,7 @@ def main(args):
         str(datetime.now()),
     )
     video_dir = utils.make_dir(os.path.join(work_dir, "video"))
+    utils.write_info(args, os.path.join(work_dir, "info.log"))
     video = VideoRecorder(video_dir if save_video else None, height=448, width=448, camera_id=env_config.camera_id)
     df = pd.DataFrame(columns=[1, 2, 3, 4], index=list(algos.keys()))
     

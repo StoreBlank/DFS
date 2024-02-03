@@ -135,3 +135,4 @@ configs/test.yaml
 distribute.py
 experiment_records/
 test/
+diffusion_policy/

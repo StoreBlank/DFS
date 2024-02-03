@@ -1,0 +1,39 @@
+algorithm: diffusion_policy
+
+env:
+  category: custom_metaworld
+  env_id: window-close-v2
+  robust: false
+  frame_stack: 3
+  mode: rgb
+  image_size: 140
+  camera_id: 2
+
+agent:
+  name: diffusion_agent # not used
+  shape_meta:
+    obs:
+      visual:
+        shape: [3, 140, 140]
+        type: rgb
+    action:
+      shape: [4]
+  horizon: 8
+  n_obs_steps: 3
+  n_action_steps: 4
+  crop_size: 124
+  lr: 0.0005
+
+expert:
+  buffer_path: ./buffers/custom_metaworld/diversity/window-close-v2/diversity_3.pkl
+
+algo:
+  seed: 42
+  train_steps: 100000 # 500000
+  save_freq: 5000
+  eval_freq: 5000
+  eval_episodes: 1
+  # eval_episodes: 0
+  log_dir: logs
+  save_video: true #
+  use_wandb: false #

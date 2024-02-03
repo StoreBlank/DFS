@@ -54,10 +54,16 @@ class SawyerDoorCloseEnvV2(SawyerXYZEnv):
 
         self.goal_space = Box(np.array(goal_low), np.array(goal_high))
 
-        self._random_reset_space = Box(
-            np.array(obj_low),
-            np.array(obj_high),
-        )
+        if random_level <= 3:
+            self._random_reset_space = Box(
+                np.array(obj_low),
+                np.array(obj_high),
+            )
+        else:
+            self._random_reset_space = Box(
+                np.array(obj_low + (-0.15,)),
+                np.array(obj_high + (0.15,)),
+            )
 
     @property
     def model_name(self):
@@ -79,17 +85,16 @@ class SawyerDoorCloseEnvV2(SawyerXYZEnv):
         self.set_state(qpos.flatten(), qvel.flatten())
 
     def reset_model(self):
-        if self.random_level == 4:
-            z = np.random.uniform(0, 0.15)
-            w = (1 - z ** 2) ** 0.5
-        else:
-            z = 0.0
-            w = 1.0
-        quaternion = np.array([w, 0.0, 0.0, z])
-
         self._reset_hand()
         self.objHeight = self.data.geom("handle").xpos[2]
         obj_pos = self._get_state_rand_vec()
+        z = 0.0
+        if self.random_level == 4:
+            z = obj_pos[-1]
+            obj_pos = obj_pos[:-1]
+        w = (1 - z ** 2) ** 0.5
+        quaternion = np.array([w, 0.0, 0.0, z])
+
         self.obj_init_pos = obj_pos
         goal_pos = obj_pos.copy() + rotate_vector_by_quaternion(np.array([0.2, -0.2, 0.0]), quaternion)
         self._target_pos = goal_pos
@@ -99,10 +104,7 @@ class SawyerDoorCloseEnvV2(SawyerXYZEnv):
         self.model.site("goal").pos = self._target_pos
 
         # keep the door open after resetting initial positions
-        degree = -1.5708
-        if self.random_level >= 3:
-            degree = np.random.uniform(-2.0, -1.5708)
-        self._set_obj_xyz(degree)
+        self._set_obj_xyz(-1.5708)
 
         return self._get_obs()
 

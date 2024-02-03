@@ -1,18 +1,20 @@
 algos: {
-  'bc': experiment_records/1_26/bc.pt,
-  'use_ea': experiment_records/1_27/use_ea.pt,
-  'pure_crd': experiment_records/1_27/pure_crd.pt,
-  'pure_crd_ea': experiment_records/1_27/pure_crd_ea.pt,
+  'bc_diversity_1': experiment_records/1_31/window-close-v2/bc_diversity_1.pt,
+  'crd_diversity_1': experiment_records/1_31/window-close-v2/crd_diversity_1.pt,
+  'dp_diversity_1': experiment_records/2_3/window-close-v2/dp_diversity_1.pt,
+  'bc_diversity_3': experiment_records/1_31/window-close-v2/bc_diversity_3.pt,
+  'crd_diversity_3': experiment_records/1_31/window-close-v2/crd_diversity_3.pt,
+  'dp_diversity_3': experiment_records/2_3/window-close-v2/dp_diversity_3.pt,
 }
 
-seed: 42
+seed: 2
 save_video: true
 eval_episodes: 50
 # eval_episodes: 5
 log_dir: logs
 
 env:
-  env_id: door-close-v2
+  env_id: window-close-v2
   frame_stack: 3
   mode: rgb
   image_size: 140
