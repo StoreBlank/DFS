@@ -2,7 +2,7 @@ import os
 import hydra
 import torch
 import metaworld
-from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
+from env.custom_random_metaworld import ALL_V2_ENVIRONMENTS, ALL_TASKS
 import random
 import numpy as np
 from datetime import datetime
@@ -18,31 +18,60 @@ os.environ["MUJOCO_GL"] = "egl"
 
 def evaluate(env_id, agent, video, num_episodes, video_name, env_config):
     # Initialize environments
-    mt10 = metaworld.MT10()
-    if env_config.robust:
-        def initialize_env(env_id):
-            env = mt10.train_classes[env_id]()
-            task = random.choice([task for task in mt10.train_tasks
-                            if task.env_name == env_id])
-            env.set_task(task)
-            env = wrap(
-                env,
-                frame_stack=env_config.frame_stack,
-                mode=env_config.mode,
-                image_size=env_config.image_size,
-            )
-            return env
+    if env_config.category == 'metaworld':
+        mt10 = metaworld.MT10()
+        if env_config.robust:
+            def initialize_env(env_id):
+                env = mt10.train_classes[env_id]()
+                task = random.choice([task for task in mt10.train_tasks
+                                if task.env_name == env_id])
+                env.set_task(task)
+                env = wrap(
+                    env,
+                    frame_stack=env_config.frame_stack,
+                    mode=env_config.mode,
+                    image_size=env_config.image_size,
+                )
+                return env
+        else:
+            from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
+            def initialize_env(env_id):
+                env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_id}-goal-observable']
+                env = env_class()
+                env = wrap(
+                    env,
+                    frame_stack=env_config.frame_stack,
+                    mode=env_config.mode,
+                    image_size=env_config.image_size,
+                )
+                return env
     else:
-        def initialize_env(env_id):
-            env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_id}-goal-observable']
-            env = env_class()
-            env = wrap(
-                env,
-                frame_stack=env_config.frame_stack,
-                mode=env_config.mode,
-                image_size=env_config.image_size,
-            )
-            return env
+        if env_config.robust:
+            random_level = env_config.random_level
+            def initialize_env(env_id):
+                env_cls = ALL_V2_ENVIRONMENTS[env_id]
+                env = env_cls(random_level=random_level)
+                task = random.choice(ALL_TASKS[f'level_{random_level}'][env_id])
+                env.set_task(task)
+                env = wrap(
+                    env,
+                    frame_stack=env_config.frame_stack,
+                    mode=env_config.mode,
+                    image_size=env_config.image_size,
+                )
+                return env
+        else:
+            from env.custom_random_metaworld import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
+            def initialize_env(env_id):
+                env_class = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[f'{env_id}-goal-observable']
+                env = env_class()
+                env = wrap(
+                    env,
+                    frame_stack=env_config.frame_stack,
+                    mode=env_config.mode,
+                    image_size=env_config.image_size,
+                )
+                return env
 
     episode_rewards = []
     num_success = 0

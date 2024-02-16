@@ -1,9 +1,5 @@
 algos: {
-  'button-press-topdown-v2': ckpts/multitask/button-press-topdown-v2.pt,
-  'drawer-close-v2': ckpts/multitask/drawer-close-v2.pt,
-  'drawer-open-v2': ckpts/multitask/drawer-open-v2.pt,
-  'window-close-v2': ckpts/multitask/window-close-v2.pt,
-  'window-open-v2': ckpts/multitask/window-open-v2.pt,
+  'reach-wall-v2': ckpts/custom_metaworld/reach-wall-v2/reach-wall-v2-level-4.pt
 }
 
 seed: 42
@@ -13,13 +9,11 @@ eval_episodes: 30
 log_dir: logs
 
 env:
+  category: custom_metaworld
   robust: true
+  random_level: 4
   env_ids: [
-    button-press-topdown-v2,
-    drawer-close-v2,
-    drawer-open-v2,
-    window-close-v2,
-    window-open-v2,
+    reach-wall-v2
   ]
   frame_stack: 3
   mode: rgb

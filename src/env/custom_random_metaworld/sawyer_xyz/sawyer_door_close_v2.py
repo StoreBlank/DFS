@@ -19,6 +19,9 @@ class SawyerDoorCloseEnvV2(SawyerXYZEnv):
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
         self.random_level = random_level
+        if random_level == 0:
+            obj_low = (0.0, 0.9, 0.15)
+            obj_high = (0.05, 0.95, 0.15)
         if random_level == 1:
             obj_low = (0.0, 0.85, 0.15)
             obj_high = (0.1, 0.95, 0.15)

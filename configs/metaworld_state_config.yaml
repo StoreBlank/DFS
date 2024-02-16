@@ -2,7 +2,7 @@ algorithm: vanilla_state_sac
 
 env:
   category: custom_metaworld
-  env_id: coffee-button-v2
+  env_id: window-close-v2
   random_level: 4
   frame_stack: 3
   mode: rgb
@@ -29,11 +29,11 @@ agent:
 algo:
   seed: 42
   mode: state
-  train_steps: 1000000
+  train_steps: 2000000
   init_steps: 1000
   batch_size: 128
   save_freq: 100000
-  eval_freq: 50000
+  eval_freq: 100000
   # eval_episodes: 1
   eval_episodes: 30
   crop: false

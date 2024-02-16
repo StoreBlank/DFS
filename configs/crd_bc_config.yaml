@@ -2,7 +2,7 @@ algorithm: crd_bc
 
 env:
   category: custom_metaworld
-  env_id: window-close-v2
+  env_id: reach-wall-v2
   robust: false
   frame_stack: 3
   mode: rgb
@@ -51,8 +51,8 @@ expert:
   name: state_sac
   mode: "state" # not used
   hidden_dim: 512 # not used
-  model_path: ./ckpts/custom_metaworld/window-close-v2/window-close-v2-level-4.pt
-  buffer_path: ./buffers/custom_metaworld/diversity/window-close-v2/diversity_3.pkl
+  model_path: ./ckpts/custom_metaworld/reach-wall-v2/reach-wall-v2-level-4.pt
+  buffer_path: ./buffers/custom_metaworld/diversity/reach-wall-v2/diversity_3.pkl
 
 algo:
   seed: 42

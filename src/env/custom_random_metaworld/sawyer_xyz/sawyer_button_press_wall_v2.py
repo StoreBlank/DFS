@@ -17,21 +17,26 @@ class SawyerButtonPressWallEnvV2(SawyerXYZEnv):
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
         self.random_level = random_level
+        if random_level == 0:
+            obj_low = (0.0, 0.9, 0.1149)
+            obj_high = (0.05, 0.9, 0.1151)
+            wall_delta_low = (0.0, -0.3, -0.115)
+            wall_delta_high = (0.0, -0.3, -0.115)
         if random_level == 1:
             obj_low = (-0.05, 0.85, 0.1149)
             obj_high = (0.05, 0.9, 0.1151)
             wall_delta_low = (0.0, -0.3, -0.115)
             wall_delta_high = (0.0, -0.3, -0.115)
         if random_level == 2:
+            obj_low = (-0.05, 0.85, 0.115)
+            obj_high = (0.05, 0.9, 0.13)
+            wall_delta_low = (-0.05, -0.3, -0.17)
+            wall_delta_high = (0.05, -0.3, -0.06)
+        if random_level >= 3:
             obj_low = (-0.1, 0.85, 0.115)
             obj_high = (0.1, 0.9, 0.15)
             wall_delta_low = (-0.05, -0.3, -0.17)
-            wall_delta_high = (0.05, -0.3, -0.07)
-        if random_level >= 3:
-            obj_low = (-0.3, 0.85, 0.115)
-            obj_high = (0.3, 0.9, 0.25)
-            wall_delta_low = (-0.1, -0.3, -0.215)
-            wall_delta_high = (0.1, -0.3, -0.015)
+            wall_delta_high = (0.05, -0.3, -0.06)
 
         super().__init__(
             self.model_name,
@@ -61,8 +66,8 @@ class SawyerButtonPressWallEnvV2(SawyerXYZEnv):
             )
         else:
             self._random_reset_space = Box(
-                np.hstack((obj_low, wall_delta_low, (-0.15,))),
-                np.hstack((obj_high, wall_delta_high, (0.15,))),
+                np.hstack((obj_low, wall_delta_low, (-0.1,))),
+                np.hstack((obj_high, wall_delta_high, (0.1,))),
             )
 
         self.goal_space = Box(np.array(goal_low), np.array(goal_high))

@@ -17,6 +17,9 @@ class SawyerHammerEnvV2(SawyerXYZEnv):
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
         self.random_level = random_level
+        if random_level == 0:
+            obj_low = (-0.05, 0.4, 0.0)
+            obj_high = (0.05, 0.45, 0.0)
         if random_level == 1:
             obj_low = (-0.1, 0.4, 0.0)
             obj_high = (0.1, 0.5, 0.0)

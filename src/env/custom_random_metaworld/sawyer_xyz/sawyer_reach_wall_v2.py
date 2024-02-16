@@ -30,21 +30,26 @@ class SawyerReachWallEnvV2(SawyerXYZEnv):
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
         self.random_level = random_level
+        if random_level == 0:
+            wall_delta_low = (0.0, -0.2, 0.0)
+            wall_delta_high = (0.0, -0.2, 0.0)
+            goal_low = (0.0, 0.85, 0.15)
+            goal_high = (0.05, 0.9, 0.2)
         if random_level == 1:
             wall_delta_low = (0.0, -0.2, 0.0)
             wall_delta_high = (0.0, -0.2, 0.0)
-            goal_low = (-0.05, 0.85, 0.05)
-            goal_high = (0.05, 0.9, 0.3)
+            goal_low = (-0.05, 0.85, 0.15)
+            goal_high = (0.05, 0.9, 0.25)
         if random_level == 2:
             wall_delta_low = (-0.05, -0.2, -0.05)
             wall_delta_high = (0.05, -0.2, 0.05)
-            goal_low = (-0.1, 0.85, 0.05)
-            goal_high = (0.1, 0.9, 0.3)
+            goal_low = (-0.05, 0.85, 0.15)
+            goal_high = (0.05, 0.9, 0.25)
         if random_level >= 3:
-            wall_delta_low = (-0.1, -0.2, -0.1)
-            wall_delta_high = (0.1, -0.2, 0.1)
-            goal_low = (-0.3, 0.8, 0.05)
-            goal_high = (0.3, 0.9, 0.3)
+            wall_delta_low = (-0.05, -0.2, -0.05)
+            wall_delta_high = (0.05, -0.2, 0.05)
+            goal_low = (-0.1, 0.85, 0.15)
+            goal_high = (0.1, 0.9, 0.3)
 
         super().__init__(
             self.model_name,
@@ -75,8 +80,8 @@ class SawyerReachWallEnvV2(SawyerXYZEnv):
             )
         else:
             self._random_reset_space = Box(
-                np.hstack((wall_delta_low, goal_low, (-0.15,))),
-                np.hstack((wall_delta_high, goal_high, (0.15,))),
+                np.hstack((wall_delta_low, goal_low, (-0.1,))),
+                np.hstack((wall_delta_high, goal_high, (0.1,))),
             )
         self.goal_space = Box(np.array(goal_low), np.array(goal_high))
 

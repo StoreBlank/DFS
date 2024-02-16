@@ -43,6 +43,7 @@ def main(args):
     )
     print("Working directory:", work_dir)
     utils.make_dir(work_dir)
+    utils.write_info(args, os.path.join(work_dir, "info.log"))
     video_dir = utils.make_dir(os.path.join(work_dir, "video"))
     video = VideoRecorder(
         video_dir if algo_config.save_video else None, height=448, width=448, camera_id=env_config.camera_id

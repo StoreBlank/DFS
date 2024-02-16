@@ -32,15 +32,18 @@ class SawyerWindowCloseEnvV2(SawyerXYZEnv):
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
         self.random_level = random_level
-        if random_level == 1:
-            obj_low = (0.0, 0.75, 0.2)
+        if random_level == 0:
+            obj_low = (0.0, 0.85, 0.2)
             obj_high = (0.0, 0.9, 0.2)
-        if random_level == 2:
-            obj_low = (-0.05, 0.7, 0.2)
+        if random_level == 1:
+            obj_low = (-0.05, 0.8, 0.2)
             obj_high = (0.05, 0.9, 0.25)
+        if random_level == 2:
+            obj_low = (-0.1, 0.75, 0.2)
+            obj_high = (0.1, 0.9, 0.3)
         if random_level >= 3:
-            obj_low = (-0.3, 0.6, 0.2)
-            obj_high = (0.3, 0.9, 0.4)
+            obj_low = (-0.2, 0.7, 0.2)
+            obj_high = (0.2, 0.9, 0.35)
 
         super().__init__(
             self.model_name,
@@ -73,8 +76,8 @@ class SawyerWindowCloseEnvV2(SawyerXYZEnv):
             )
         else:
             self._random_reset_space = Box(
-                np.array(obj_low + (-0.15,)),
-                np.array(obj_high + (0.15,)),
+                np.array(obj_low + (-0.1,)),
+                np.array(obj_high + (0.1,)),
             )
         self.goal_space = Box(np.array(goal_low), np.array(goal_high))
 

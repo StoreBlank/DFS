@@ -19,6 +19,11 @@ class SawyerNutAssemblyEnvV2(SawyerXYZEnv):
         hand_low = (-0.5, 0.40, 0.05)
         hand_high = (0.5, 1, 0.5)
         self.random_level = random_level
+        if random_level == 0:
+            obj_low = (0, 0.6, 0.02)
+            obj_high = (0, 0.6, 0.02)
+            goal_low = (-0.05, 0.8, 0.1)
+            goal_high = (0.05, 0.8, 0.1)
         if random_level == 1:
             obj_low = (0, 0.6, 0.02)
             obj_high = (0, 0.6, 0.02)

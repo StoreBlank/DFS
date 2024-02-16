@@ -674,6 +674,8 @@ class CRDLoss(nn.Module):
             self.embeds_s.append(nn.Sequential(
                 nn.Flatten(),
                 nn.Linear(s_dim, opt.feat_dim),
+                # nn.ReLU(),
+                # nn.Linear(opt.feat_dim, opt.feat_dim),
             ))
         self.embeds_s = nn.ModuleList(self.embeds_s).cuda()
         # self.embed_t = nn.Sequential(
@@ -685,6 +687,8 @@ class CRDLoss(nn.Module):
             self.embeds_t.append(nn.Sequential(
                 nn.Flatten(),
                 nn.Linear(t_dim, opt.feat_dim),
+                # nn.ReLU(),
+                # nn.Linear(opt.feat_dim, opt.feat_dim),
             ))
         self.embeds_t = nn.ModuleList(self.embeds_t).cuda()
         self.crd_weight = opt.crd_weight

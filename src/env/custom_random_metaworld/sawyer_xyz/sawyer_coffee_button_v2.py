@@ -18,15 +18,18 @@ class SawyerCoffeeButtonEnvV2(SawyerXYZEnv):
         hand_low = (-0.5, 0.4, 0.05)
         hand_high = (0.5, 1.0, 0.5)
         self.random_level = random_level
+        if random_level == 0:
+            obj_low = (0.0, 0.85, -0.001)
+            obj_high = (0.05, 0.9, +0.001)
         if random_level == 1:
-            obj_low = (-0.1, 0.8, -0.001)
-            obj_high = (0.1, 0.9, +0.001)
+            obj_low = (-0.05, 0.8, -0.001)
+            obj_high = (0.05, 0.9, +0.001)
         if random_level == 2:
+            obj_low = (-0.1, 0.75, -0.001)
+            obj_high = (0.1, 0.9, +0.001)
+        if random_level >= 3:
             obj_low = (-0.2, 0.7, -0.001)
             obj_high = (0.2, 0.9, +0.001)
-        if random_level >= 3:
-            obj_low = (-0.4, 0.6, -0.001)
-            obj_high = (0.4, 0.9, +0.001)
         # goal_low[3] would be .1, but objects aren't fully initialized until a
         # few steps after reset(). In that time, it could be .01
         goal_low = obj_low + np.array([-0.001, -0.22 + self.max_dist, 0.299])
@@ -59,8 +62,8 @@ class SawyerCoffeeButtonEnvV2(SawyerXYZEnv):
             )
         else:
             self._random_reset_space = Box(
-                np.array(obj_low + (-0.15,)),
-                np.array(obj_high + (0.15,)),
+                np.array(obj_low + (-0.1,)),
+                np.array(obj_high + (0.1,)),
             )
         self.goal_space = Box(np.array(goal_low), np.array(goal_high))
 

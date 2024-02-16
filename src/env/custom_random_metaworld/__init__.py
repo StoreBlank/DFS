@@ -86,7 +86,7 @@ def _make_tasks(classes, args_kwargs, kwargs_override, seed=None):
         st0 = np.random.get_state()
         np.random.seed(seed)
     all_tasks = {}
-    for random_level in [1, 2, 3, 4]:
+    for random_level in [0, 1, 2, 3, 4]:
         level_key = f'level_{random_level}'
         level_tasks = {}
         for env_name, args in args_kwargs.items():

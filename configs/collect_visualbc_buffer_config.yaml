@@ -13,11 +13,12 @@ algorithm: visualbc_buffer_collector
 
 env:
   category: custom_metaworld
-  env_id: window-close-v2
+  env_id: button-press-wall-v2
   # whether randomize the task
   robust: true
-  random_level: 1
+  random_level: 0
   # how many random tasks to collect
+  # set 60 to be fully random
   diversity: 3
   frame_stack: 3
   mode: rgb
@@ -25,10 +26,10 @@ env:
   camera_id: 2
 
 agent:
-  model_path: ./ckpts/custom_metaworld/window-close-v2/window-close-v2-level-4.pt
+  model_path: ./ckpts/custom_metaworld/button-press-wall-v2/button-press-wall-v2-level-4.pt
 
 algo:
-  seed: 42
+  seed: 2
   rollout_steps: 1000
   batch_size: 128
   save_video: true
